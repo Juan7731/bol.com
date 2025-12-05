@@ -1,0 +1,66 @@
+Bol.com Retailer API Order Automation
+
+I need streamlined, code-level access to the Bol.com Retailer API v10 so my workflow can automatically:
+
+• pull every open order in real time
+• generate Bol-approved shipping labels (we ship via “Logistics via Bol”)
+• confirm dispatch/returns and push the corresponding “return information when it is sent out” events back to Bol
+
+I already have Bol partner credentials; you just connect, authenticate (OAuth 2.0), and expose clean methods or endpoints that I can drop into my existing system. Language or framework is up to you as long as it’s well-documented and production ready.
+
+Acceptance criteria
+1. A small test script shows the three calls above working against my sandbox and then live account.
+2. Returned JSON is parsed into simple objects/DTOs; no raw response strings in my business layer.
+3. Clear README with setup steps, token refresh logic, and example requests.
+
+If you have previous Bol.com API experience—or can demonstrate fast mastery of v10—let’s get this moving quickly.
+
+https://api.bol.com/retailer/public/Retailer-API/v10/functional/retailer-api/orders-shipments.html
+
+And we are looking for a developer to build an automated order processing system for Bol.com, using Python, MySQL, or similar technology.
+
+The system should:
+
+Automatically retrieve all Bol.com orders via API.
+
+Classify each order into one of three categories (Single, SingleLine, Multi) based on quantity and EAN structure.
+
+Generate Excel (.xlsx) files in a specific format (examples provided).
+
+Automatically upload the generated Excel files to an FTP server.
+
+Send email notifications with daily summaries (configurable email settings).
+
+Include a simple HTML/PHP admin page where we can:
+
+Set up to four automated processing times per day.
+
+Manage email and FTP settings.
+
+Additionally, the script must:
+
+Detect HTML status files (via FTP) returned from an external system.
+
+When a file contains status "verzonden", it must update the corresponding Bol.com order status via API (ideally in batches using a cron job or scheduler).
+
+We will provide:
+
+API access details
+
+Excel layout examples
+
+FTP credentials
+
+The full project specification (attached document)
+
+Please apply only if you have experience with API integrations, automated scheduling (cron jobs), and FTP/email handling.
+Skills Required
+PHP
+Python
+Data Processing
+Software Architecture
+MySQL
+Software Development
+Web Services
+JSON
+API Development

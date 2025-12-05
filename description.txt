@@ -1,0 +1,155 @@
+📦 Project Description: Bol.com Order Processing and Excel Export
+Objective
+Develop a Python, MySQL, or equivalent application that automatically retrieves all orders from Bol.com, processes them, and sorts them into separate Excel (.xlsx) files based on predefined criteria.
+
+🧩 Order Classification
+The system must automatically classify each order into one of the following three categories:
+Single
+
+The customer orders one item of one EAN
+
+File name: S-XXX.xlsx
+
+SingleLine
+
+The customer orders multiple units of the same EAN
+
+File name: SL-XXX.xlsx
+
+Multi
+
+The customer orders different items / multiple EANs
+
+File name: M-XXX.xlsx
+
+Each day, file numbering starts again from 001.
+ Examples:
+S-001.xlsx, S-002.xlsx
+
+SL-001.xlsx, M-001.xlsx, etc.
+
+The exact Excel layout and structure are provided in the attached examples and must be followed precisely.
+
+you see in column ‘orderstatus’ the name ‘open’ that is also the status that bol gives you, add that name in the file.
+
+In the Excel layout and structure, you’ll see a column called “Batch Type.”
+ This value must match the file name of the Excel file generated for that batch.
+As explained earlier, we generate up to three order types each time (if orders are available):
+In the morning, the files would be: S-001.xlsx, SL-001.xlsx, and M-001.xlsx.
+
+In the afternoon, new batches are generated as: S-002.xlsx, SL-002.xlsx, and M-002.xlsx.
+
+The corresponding batch number (e.g. 001, 002) must also appear in the Excel sheet in the designated column.
+ The Batch Type column should contain the static text value:
+Single
+
+SingleLine
+
+Multi
+ depending on the file type being generated.
+
+Column explanation:
+Column: Description
+A: Bol.com order ID
+B: Customer name
+C: MP EAN (retrieved from Bol.com)
+D: Quantity of products for that EAN
+E: Shipping label
+F: Time of order
+G: Category (Single, SingleLine, or Multi)
+H: Batch number (as explained above)
+I: Bol.com order status — this will always be “open” at the time of order collection
+
+
+The script (including the Bol.com connection and logic) should be placed in the 
+folder:  /data/sites/web/trivium-ecommercecom/FTP/Script
+
+⚙️ Admin Interface (HTML/PHP)
+A simple HTML (or PHP) admin page must be created with the following functionality:
+ To be hosted at:
+ 🔗 https://trivium-ecommerce.com/jean.php (“jean” indicates the page location.
+This page must be secured with a username and password login.
+1st Admin Page
+Allow configuration of up to four time slots when orders will automatically be processed and converted into Excel files.
+
+Time fields are optional: if a field is left empty, that time slot will not be used.
+
+Default processing times: 08:30 and 15:01.
+
+2nd Admin Page
+Allow configuration of email addresses that will receive the daily summary report.
+
+The system must send an email with the total number of processed orders, based on the orders included in the generated Excel files and the execution time.
+
+The email should go to 2 or 3 recipients, containing a simple summary, e.g.:
+
+
+ “Today, xxx orders need to be processed.” (we want to be able to adjust that text)
+The xxx orders must contain the total orders that you got from bol, so perhaps 
+Today, [total_orders] orders need to be processed. and you fill the number between [] so we can change that text. 
+ 
+
+Email configuration fields should be available for us to fill in manually:
+
+Email address
+
+Reply-to address
+
+Outgoing SMTP server
+
+Port
+
+Connection encryption (TLS)
+
+Authentication type (password)
+
+Username
+
+Password
+
+Optionally, include additional configuration fields (FTP credentials, test mode, etc.).
+
+💾 Output and Notifications
+Once the Excel files are generated, they must be automatically uploaded to a specified FTP location: /data/sites/web/trivium-ecommercecom/FTP/Batches
+
+After upload, an email notification should be sent summarizing the total number of orders processed and the generated file names.
+
+
+🔁 Status Callback Handling
+After processing, our external system sends back an HTML status file for each order to a specified FTP location:  /data/sites/web/trivium-ecommercecom/FTP/Callbacks
+Each file contains the Bol.com order ID and a status field indicating either:
+"verzonden" (sent/shipped), or
+
+"niet verzonden" (not shipped).
+
+When the script detects a file with the status "verzonden", it must automatically update that order’s status in Bol.com via the API.
+ This can be done in batches several times per hour, ideally per file, managed by a cron job or scheduler (e.g., once per minute).
+Files marked "niet verzonden" should simply be ignored.
+
+🧠 Additional Questions for the Developer
+What do you need to enable email sending from the system (SMTP settings, API access, authentication, etc.)?
+
+Do you prefer to build the system in Python or a MySQL-based script?
+
+Should the process be executed via cron job or another type of scheduler?
+
+ SFTP account credentials
+
+Host: triviu.ssh.transip.me
+
+Username: trivium-ecommercecom
+
+Password: &9z?8zcN&9z?8zcN
+
+Encryption: SFTP over SSH
+
+Port: 22
+
+
+bol credentials:
+cliend ID
+051dd4f6-c84e-4b98-876e-77a6727ca48a
+
+secret:
+O@A58WI8CHfiGhf8JxQT72?oO5BYF)YfhsWTxNZB2BxTlxoxoHKY!IHsFuWb3YLH
+

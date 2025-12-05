@@ -1,0 +1,49 @@
+{
+  "processing_times": [
+    "08:00",
+    "15:01",
+    "",
+    ""
+  ],
+  "email": {
+    "enabled": true,
+    "smtp_host": "smtp.transip.email",
+    "smtp_port": 465,
+    "use_tls": false,
+    "username": "info@trivium-ecommerce.com",
+    "password": "juzge5-habkur-kidtoP",
+    "from": "info@trivium-ecommerce.com",
+    "recipients": [
+      "finance@trivium-ecommerce.com",
+      "constantijn@trivium-ecommerce.com",
+      "info@trivium-ecommerce.com"
+    ],
+    "subject_template": "Bol.com orders summary: [total_orders] orders need to be processed",
+    "body_template": "Today, [total_orders] orders need to be processed.\nThis number is based on the orders included in the generated Excel batch files."
+  },
+  "ftp": {
+    "host": "triviu.ssh.transip.me",
+    "port": 22,
+    "username": "trivium-ecommercecom",
+    "password": "&9z?8zcN&9z?8zcN",
+    "remote_batch_dir": "/data/sites/web/trivium-ecommercecom/FTP/Batches",
+    "remote_callback_dir": "/data/sites/web/trivium-ecommercecom/FTP/Callbacks"
+  },
+  "bol_accounts": [
+    {
+      "name": "Trivium",
+      "client_id": "051dd4f6-c84e-4b98-876e-77a6727ca48a",
+      "client_secret": "O@A58WI8CHfiGhf8JxQT72?oO5BYF)YfhsWTxNZB2BxTlxoxoHKY!IHsFuWb3YLH",
+      "active": true
+    },
+    {
+      "name": "Jean",
+      "client_id": "f418eb2c-ca2c-4138-b5d3-fa89cb800dad",
+      "client_secret": "rTj0Z!K1sZThWW!Rgu6u0t2@l62Z8jKXQDcNkx(QH0IX@m+cwiYnHpT4NNi42iVF",
+      "active": false
+    }
+  ],
+  "shop_mapping": {
+    "default": "Trivium"
+  }
+}
