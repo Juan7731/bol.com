@@ -1,0 +1,138 @@
+================================================================================
+LABEL PDF AUTO-UPLOADER - QUICK START GUIDE
+================================================================================
+
+📁 What it does:
+   Automatically monitors the 'label' folder and uploads PDF files to FTP
+   when they are created.
+
+🚀 Quick Start:
+
+   1. START MONITORING (Recommended):
+      python run_label_monitor.py
+      
+      Then select option 1 or 2 from the menu.
+
+   2. ALTERNATIVE - Direct command:
+      python label_uploader.py monitor
+
+   3. UPLOAD ALL EXISTING FILES:
+      python label_uploader.py upload-all
+
+   4. TEST THE SYSTEM:
+      python test_label_uploader.py
+
+================================================================================
+USAGE SCENARIOS
+================================================================================
+
+Scenario 1: Background Monitoring
+   Command: python label_uploader.py monitor
+   Use when: You want to automatically upload labels as they're created
+   Result: Runs continuously, uploading new PDFs automatically
+
+Scenario 2: Initial Sync + Monitoring  
+   Command: python label_uploader.py monitor --upload-existing
+   Use when: First time setup or after system restart
+   Result: Uploads all existing PDFs, then monitors for new ones
+
+Scenario 3: One-Time Batch Upload
+   Command: python label_uploader.py upload-all
+   Use when: You just want to upload existing files once
+   Result: Uploads all PDFs and exits
+
+Scenario 4: Test Single File
+   Command: python label_uploader.py test <filename.pdf>
+   Use when: Testing or debugging a specific file
+   Result: Uploads one file and shows detailed results
+
+================================================================================
+FILE LOCATIONS
+================================================================================
+
+Local:  C:\Users\Lucky\Pictures\Bol\label\
+Remote: /data/sites/web/trivium-ecommercecom/FTP/Label/
+
+Current Status: 21 PDF files in local folder
+
+================================================================================
+INTEGRATION WITH YOUR CODE
+================================================================================
+
+from label_uploader import upload_label_pdf_to_ftp
+
+# Upload a single file
+success = upload_label_pdf_to_ftp("label/order-123.pdf")
+
+# Or use the batch function
+from label_uploader import upload_all_labels
+upload_all_labels()
+
+================================================================================
+TESTING
+================================================================================
+
+Run the test suite:
+   python test_label_uploader.py
+
+Expected result: 3/3 tests passed ✅
+
+================================================================================
+TROUBLESHOOTING
+================================================================================
+
+Problem: "SFTP connection failed"
+Solution: Check config.py credentials and network connectivity
+
+Problem: "Directory does not exist"  
+Solution: The script will auto-create it, or check permissions
+
+Problem: Monitor doesn't detect new files
+Solution: Ensure files are .pdf extension and in the 'label' folder
+
+Problem: Upload fails
+Solution: Run test_label_uploader.py to diagnose the issue
+
+================================================================================
+DOCUMENTATION
+================================================================================
+
+Full documentation: LABEL_UPLOADER_README.md
+Implementation details: LABEL_UPLOADER_SUMMARY.md
+Integration examples: label_integration_example.py
+
+================================================================================
+TEST RESULTS
+================================================================================
+
+✅ SFTP Connection: PASSED
+✅ Local Directory: PASSED (21 PDFs found)
+✅ Single Upload: PASSED (1,903 bytes verified)
+
+Overall: 3/3 tests passed
+Status: READY FOR PRODUCTION ✅
+
+================================================================================
+QUICK COMMANDS CHEAT SHEET
+================================================================================
+
+Start monitoring:        python run_label_monitor.py
+Monitor (direct):        python label_uploader.py monitor
+Upload all:              python label_uploader.py upload-all
+Test system:             python test_label_uploader.py
+Test single file:        python label_uploader.py test file.pdf
+Upload existing + watch: python label_uploader.py monitor --upload-existing
+
+================================================================================
+NOTES
+================================================================================
+
+- Monitor checks every 5 seconds for new files
+- Files are verified after upload (size comparison)
+- Remote directory is auto-created if needed
+- Press Ctrl+C to stop monitoring
+- Logs show detailed progress with emoji indicators
+- Works with existing SFTP credentials from config.py
+
+================================================================================
+

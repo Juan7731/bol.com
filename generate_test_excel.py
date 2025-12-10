@@ -12,6 +12,13 @@ from order_processing import (
     upload_files_sftp,
     send_summary_email,
 )
+
+# Import label uploader
+try:
+    from label_uploader import upload_all_labels
+    LABEL_UPLOADER_AVAILABLE = True
+except ImportError:
+    LABEL_UPLOADER_AVAILABLE = False
 from bol_api_client import BolAPIClient
 from bol_dtos import Order
 from config import BOL_CLIENT_ID, BOL_CLIENT_SECRET, TEST_MODE
@@ -75,16 +82,27 @@ def generate_excel_files_force():
         print(f"   - {os.path.basename(file_path)} ({file_size:.2f} KB)")
         print(f"     Path: {file_path}")
     
-    # Upload to SFTP
-    print("\n5. Uploading to SFTP...")
+    # Upload CSV files to SFTP
+    print("\n5. Uploading CSV files to SFTP...")
     try:
         upload_files_sftp(files_created)
-        print("   ✅ Files uploaded successfully")
+        print("   ✅ CSV files uploaded successfully")
     except Exception as e:
-        print(f"   ⚠️  Upload failed: {e}")
+        print(f"   ⚠️  CSV upload failed: {e}")
+    
+    # Upload label PDFs to SFTP
+    print("\n6. Uploading label PDFs to SFTP...")
+    if LABEL_UPLOADER_AVAILABLE:
+        try:
+            upload_all_labels()
+            print("   ✅ Label PDFs uploaded successfully")
+        except Exception as e:
+            print(f"   ⚠️  Label upload failed: {e}")
+    else:
+        print("   ⚠️  Label uploader not available")
     
     # Send email
-    print("\n6. Sending email notification...")
+    print("\n7. Sending email notification...")
     try:
         send_summary_email(total_orders, files_created)
         print("   ✅ Email sent")

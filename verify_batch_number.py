@@ -1,6 +1,6 @@
 """Verify that Batch Number column matches filename"""
 
-import openpyxl
+import csv
 import glob
 import os
 
@@ -10,15 +10,15 @@ def verify_batch_numbers():
     print("VERIFYING BATCH NUMBER MATCHES FILENAME")
     print("="*80)
     
-    # Find all Excel files
-    pattern = "batches/**/*.xlsx"
+    # Find all CSV files
+    pattern = "batches/**/*.csv"
     files = glob.glob(pattern, recursive=True)
     
     if not files:
-        print("No Excel files found")
+        print("No CSV files found")
         return
     
-    print(f"\nFound {len(files)} Excel file(s)\n")
+    print(f"\nFound {len(files)} CSV file(s)\n")
     
     all_correct = True
     
@@ -26,16 +26,22 @@ def verify_batch_numbers():
         try:
             # Extract batch number from filename (full filename without extension)
             filename = os.path.basename(file_path)
-            # Format: S-001.xlsx, SL-001.xlsx, M-001.xlsx
+            # Format: S-001.csv, SL-001.csv, M-001.csv
             # Expected batch number should be full filename without extension: "S-001", "SL-001", "M-001"
-            expected_batch = filename.replace(".xlsx", "")  # e.g., "S-001", "SL-001", "M-001"
+            expected_batch = filename.replace(".csv", "")  # e.g., "S-001", "SL-001", "M-001"
             
-            # Open Excel file
-            wb = openpyxl.load_workbook(file_path)
-            ws = wb.active
+            # Open CSV file
+            with open(file_path, 'r', newline='', encoding='utf-8') as csvfile:
+                reader = csv.reader(csvfile)
+                rows = list(reader)
+            
+            if not rows:
+                print(f"❌ {filename}: File is empty")
+                all_correct = False
+                continue
             
             # Get headers
-            headers = [cell.value for cell in ws[1]]
+            headers = rows[0]
             batch_col_idx = None
             for idx, header in enumerate(headers):
                 if header == "Batch Number":
@@ -48,12 +54,12 @@ def verify_batch_numbers():
                 continue
             
             # Check first data row
-            if ws.max_row < 2:
+            if len(rows) < 2:
                 print(f"⚠️  {filename}: No data rows")
                 continue
             
             # Get batch number from first data row
-            actual_batch = ws[2][batch_col_idx].value  # Row 2 (first data row)
+            actual_batch = rows[1][batch_col_idx] if batch_col_idx < len(rows[1]) else ""
             actual_batch_str = str(actual_batch) if actual_batch else ""
             
             # Compare

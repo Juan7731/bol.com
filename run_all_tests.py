@@ -70,6 +70,8 @@ def test_sftp_connection():
         from config import SFTP_HOST, SFTP_PORT, SFTP_USERNAME, SFTP_PASSWORD
         
         transport = paramiko.Transport((SFTP_HOST, SFTP_PORT))
+        transport.banner_timeout = 30  # Increase banner timeout
+        transport.auth_timeout = 30    # Increase auth timeout
         transport.connect(username=SFTP_USERNAME, password=SFTP_PASSWORD)
         sftp = paramiko.SFTPClient.from_transport(transport)
         
@@ -147,7 +149,11 @@ def test_callback_handler():
     print("="*80)
     
     try:
+        import time
         from status_callback_handler import fetch_callback_files_sftp
+        
+        # Small delay to avoid connection limit issues
+        time.sleep(2)
         
         files = fetch_callback_files_sftp()
         
@@ -163,33 +169,33 @@ def test_callback_handler():
         return False
 
 
-def test_excel_generation():
-    """Test Excel file generation"""
+def test_csv_generation():
+    """Test CSV file generation"""
     print("\n" + "="*80)
-    print("TEST 7: Excel File Generation")
+    print("TEST 7: CSV File Generation")
     print("="*80)
     
     try:
         import glob
         import os
         
-        pattern = "batches/**/*.xlsx"
+        pattern = "batches/**/*.csv"
         files = glob.glob(pattern, recursive=True)
         
         if files:
             latest = max(files, key=os.path.getmtime)
             size = os.path.getsize(latest)
-            print(f"✅ Excel Files Found")
+            print(f"✅ CSV Files Found")
             print(f"   Total files: {len(files)}")
             print(f"   Latest: {latest}")
             print(f"   Size: {size} bytes")
             return True
         else:
-            print(f"⚠️  No Excel files found")
+            print(f"⚠️  No CSV files found")
             print(f"   Run 'python order_processing.py' to generate files")
             return None
     except Exception as e:
-        print(f"❌ Excel Generation Test Error: {e}")
+        print(f"❌ CSV Generation Test Error: {e}")
         return False
 
 
@@ -209,7 +215,7 @@ def main():
     results['email'] = test_email_config()
     results['config'] = test_config_manager()
     results['callback'] = test_callback_handler()
-    results['excel'] = test_excel_generation()
+    results['csv'] = test_csv_generation()
     
     # Summary
     print("\n" + "="*80)

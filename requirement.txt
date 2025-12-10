@@ -25,9 +25,9 @@ Automatically retrieve all Bol.com orders via API.
 
 Classify each order into one of three categories (Single, SingleLine, Multi) based on quantity and EAN structure.
 
-Generate Excel (.xlsx) files in a specific format (examples provided).
+Generate CSV files in a specific format (examples provided).
 
-Automatically upload the generated Excel files to an FTP server.
+Automatically upload the generated CSV files to an FTP server.
 
 Send email notifications with daily summaries (configurable email settings).
 

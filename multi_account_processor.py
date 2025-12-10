@@ -16,6 +16,13 @@ from order_processing import (
     send_summary_email,
     run_processing_once,
 )
+
+# Import label uploader for automatic PDF upload
+try:
+    from label_uploader import upload_all_labels
+    LABEL_UPLOADER_AVAILABLE = True
+except ImportError:
+    LABEL_UPLOADER_AVAILABLE = False
 from order_database import init_database, get_unprocessed_orders
 from config_manager import get_active_bol_accounts, get_config_summary
 
@@ -87,9 +94,16 @@ def process_account(account_name: str, client_id: str, client_secret: str,
         # For now, we'll use the default shop name from config
         files_created, total_orders = generate_excel_batches(grouped, client)
         
-        # Upload files
+        # Upload CSV files
         if files_created:
             upload_files_sftp(files_created)
+            
+            # Upload label PDFs
+            if LABEL_UPLOADER_AVAILABLE:
+                try:
+                    upload_all_labels()
+                except Exception as e:
+                    logger.error(f"Failed to upload label PDFs for {account_name}: {e}")
         
         # Send email summary
         send_summary_email(total_orders, files_created)

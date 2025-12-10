@@ -1,6 +1,6 @@
-📦 Project Description: Bol.com Order Processing and Excel Export
+📦 Project Description: Bol.com Order Processing and CSV Export
 Objective
-Develop a Python, MySQL, or equivalent application that automatically retrieves all orders from Bol.com, processes them, and sorts them into separate Excel (.xlsx) files based on predefined criteria.
+Develop a Python, MySQL, or equivalent application that automatically retrieves all orders from Bol.com, processes them, and sorts them into separate CSV files based on predefined criteria.
 
 🧩 Order Classification
 The system must automatically classify each order into one of the following three categories:
@@ -33,13 +33,13 @@ The exact Excel layout and structure are provided in the attached examples and m
 you see in column ‘orderstatus’ the name ‘open’ that is also the status that bol gives you, add that name in the file.
 
 In the Excel layout and structure, you’ll see a column called “Batch Type.”
- This value must match the file name of the Excel file generated for that batch.
+ This value must match the file name of the CSV file generated for that batch.
 As explained earlier, we generate up to three order types each time (if orders are available):
-In the morning, the files would be: S-001.xlsx, SL-001.xlsx, and M-001.xlsx.
+In the morning, the files would be: S-001.csv, SL-001.csv, and M-001.csv.
 
-In the afternoon, new batches are generated as: S-002.xlsx, SL-002.xlsx, and M-002.xlsx.
+In the afternoon, new batches are generated as: S-002.csv, SL-002.csv, and M-002.csv.
 
-The corresponding batch number (e.g. 001, 002) must also appear in the Excel sheet in the designated column.
+The corresponding batch number (e.g. 001, 002) must also appear in the CSV file in the designated column.
  The Batch Type column should contain the static text value:
 Single
 

@@ -1,31 +1,36 @@
 """
-Quick test to verify Excel files and system status
+Quick test to verify CSV files and system status
 """
 
 import os
 import glob
-import openpyxl
+import csv
 from order_database import get_processed_count, get_processed_orders_summary
 
-def find_excel_files():
-    """Find all Excel files in batches directory"""
-    pattern = "batches/**/*.xlsx"
+def find_csv_files():
+    """Find all CSV files in batches directory"""
+    pattern = "batches/**/*.csv"
     files = glob.glob(pattern, recursive=True)
     return sorted(files, key=os.path.getmtime, reverse=True)
 
-def test_excel_file(file_path):
-    """Test a single Excel file"""
+def test_csv_file(file_path):
+    """Test a single CSV file"""
     print(f"\n{'='*80}")
     print(f"Testing: {os.path.basename(file_path)}")
     print(f"Path: {file_path}")
     print('='*80)
     
     try:
-        wb = openpyxl.load_workbook(file_path)
-        ws = wb.active
+        with open(file_path, 'r', newline='', encoding='utf-8') as csvfile:
+            reader = csv.reader(csvfile)
+            rows = list(reader)
+        
+        if not rows:
+            print("❌ File is empty")
+            return False
         
         # Get headers
-        headers = [cell.value for cell in ws[1]]
+        headers = rows[0]
         print(f"\n📋 Headers ({len(headers)} columns):")
         for i, header in enumerate(headers, 1):
             print(f"   {chr(64+i)}: {header}")
@@ -53,11 +58,11 @@ def test_excel_file(file_path):
             
             # Check first 5 data rows
             shop_values = set()
-            for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=False), start=2):
+            for row_idx, row in enumerate(rows[1:], start=2):
                 if row_idx > 6:  # First 5 rows
                     break
-                if any(cell.value for cell in row):
-                    shop_val = row[shop_idx].value
+                if any(cell for cell in row):
+                    shop_val = row[shop_idx] if shop_idx < len(row) else None
                     if shop_val:
                         shop_values.add(shop_val)
                         print(f"   Row {row_idx}: {shop_val}")
@@ -76,11 +81,11 @@ def test_excel_file(file_path):
             
             zpl_count = 0
             empty_count = 0
-            for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=False), start=2):
+            for row_idx, row in enumerate(rows[1:], start=2):
                 if row_idx > 10:  # Check first 10 rows
                     break
-                if any(cell.value for cell in row):
-                    zpl_val = row[zpl_idx].value
+                if any(cell for cell in row):
+                    zpl_val = row[zpl_idx] if zpl_idx < len(row) else None
                     if zpl_val:
                         zpl_count += 1
                         zpl_str = str(zpl_val)
@@ -99,7 +104,7 @@ def test_excel_file(file_path):
             print(f"❌ 'Shipping Label' column missing")
         
         # Count total rows
-        total_rows = sum(1 for row in ws.iter_rows(min_row=2) if any(cell.value for cell in row))
+        total_rows = len([row for row in rows[1:] if any(cell for cell in row)])
         print(f"\n📊 Total data rows: {total_rows}")
         
         return True
@@ -123,32 +128,32 @@ def main():
     if summary:
         print(f"   By type: {summary}")
     
-    # Find Excel files
-    print("\n📁 Searching for Excel files...")
-    excel_files = find_excel_files()
+    # Find CSV files
+    print("\n📁 Searching for CSV files...")
+    csv_files = find_csv_files()
     
-    if not excel_files:
-        print("   ⚠️  No Excel files found in batches/ directory")
+    if not csv_files:
+        print("   ⚠️  No CSV files found in batches/ directory")
         print("\n   To generate new files:")
         print("   1. Reset database: Delete bol_orders.db")
         print("   2. Run: python order_processing.py")
         return
     
-    print(f"   Found {len(excel_files)} Excel file(s)")
+    print(f"   Found {len(csv_files)} CSV file(s)")
     
     # Test latest file
-    if excel_files:
-        latest = excel_files[0]
+    if csv_files:
+        latest = csv_files[0]
         print(f"\n   Testing latest file: {os.path.basename(latest)}")
-        test_excel_file(latest)
+        test_csv_file(latest)
     
     # Test all files if multiple
-    if len(excel_files) > 1:
+    if len(csv_files) > 1:
         print(f"\n\n{'='*80}")
-        print(f"Testing all {len(excel_files)} files...")
+        print(f"Testing all {len(csv_files)} files...")
         print('='*80)
-        for file_path in excel_files[:5]:  # Test first 5
-            test_excel_file(file_path)
+        for file_path in csv_files[:5]:  # Test first 5
+            test_csv_file(file_path)
     
     print("\n" + "="*80)
     print("✅ Test complete!")

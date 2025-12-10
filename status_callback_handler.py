@@ -163,9 +163,16 @@ def fetch_callback_files_sftp() -> List[Dict[str, str]]:
         List of dictionaries with 'filename' and 'content' keys
     """
     files = []
+    transport = None
+    sftp = None
     
     try:
+        # Create transport with timeout settings
         transport = paramiko.Transport((SFTP_HOST, SFTP_PORT))
+        transport.banner_timeout = 30  # Increase banner timeout
+        transport.auth_timeout = 30    # Increase auth timeout
+        
+        # Connect with credentials
         transport.connect(username=SFTP_USERNAME, password=SFTP_PASSWORD)
         sftp = paramiko.SFTPClient.from_transport(transport)
         
@@ -198,11 +205,31 @@ def fetch_callback_files_sftp() -> List[Dict[str, str]]:
                     logger.error(f"Error reading file {filename}: {e}")
             
         finally:
-            sftp.close()
-            transport.close()
+            # Ensure connections are properly closed
+            if sftp:
+                try:
+                    sftp.close()
+                except:
+                    pass
+            if transport:
+                try:
+                    transport.close()
+                except:
+                    pass
             
     except Exception as e:
         logger.error(f"Error connecting to SFTP for callbacks: {e}")
+        # Clean up on error
+        if sftp:
+            try:
+                sftp.close()
+            except:
+                pass
+        if transport:
+            try:
+                transport.close()
+            except:
+                pass
     
     return files
 
@@ -303,6 +330,8 @@ def archive_processed_files(file_paths: List[str]) -> None:
     """
     try:
         transport = paramiko.Transport((SFTP_HOST, SFTP_PORT))
+        transport.banner_timeout = 30  # Increase banner timeout
+        transport.auth_timeout = 30    # Increase auth timeout
         transport.connect(username=SFTP_USERNAME, password=SFTP_PASSWORD)
         sftp = paramiko.SFTPClient.from_transport(transport)
         

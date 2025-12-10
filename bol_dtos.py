@@ -24,6 +24,12 @@ class OrderItem:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'OrderItem':
         """Create OrderItem from API response dictionary"""
+        # fulfilmentMethod is directly on the order item (not nested)
+        fulfilment_method = data.get('fulfilmentMethod')
+        # Also try nested structure for backwards compatibility
+        if not fulfilment_method:
+            fulfilment_method = data.get('fulfilment', {}).get('method')
+        
         return cls(
             order_item_id=data.get('orderItemId', ''),
             ean=data.get('ean'),
@@ -31,7 +37,7 @@ class OrderItem:
             quantity_shipped=data.get('quantityShipped', 0),
             quantity_cancelled=data.get('quantityCancelled', 0),
             unit_price=data.get('unitPrice'),
-            fulfilment_method=data.get('fulfilment', {}).get('method'),
+            fulfilment_method=fulfilment_method,
             offer_reference=data.get('offerReference'),
             product_title=data.get('product', {}).get('title')
         )

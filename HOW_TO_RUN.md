@@ -11,9 +11,9 @@ python order_processing.py
 python multi_account_processor.py
 ```
 
-### 2. Test Order Processing (Force Generate Excel)
+### 2. Test Order Processing (Force Generate CSV)
 ```bash
-# Generate Excel files even if orders are already processed (for testing)
+# Generate CSV files even if orders are already processed (for testing)
 python generate_test_excel.py
 ```
 
@@ -22,7 +22,7 @@ python generate_test_excel.py
 # Run comprehensive system test
 python test_system.py
 
-# Quick test (check database and Excel files)
+# Quick test (check database and CSV files)
 python quick_test.py
 ```
 
@@ -55,7 +55,7 @@ python verify_ftp_upload.py
 ```python
 python -c "
 from order_processing import send_summary_email
-send_summary_email(5, ['test_file.xlsx'])
+send_summary_email(5, ['test_file.csv'])
 print('Email sent!')
 "
 ```
@@ -103,7 +103,7 @@ print(f'✅ API Connection OK - Found {len(orders)} orders')
 # This will:
 # - Fetch orders from Bol.com
 # - Classify them (Single/SingleLine/Multi)
-# - Generate Excel files
+# - Generate CSV files
 # - Upload to SFTP
 # - Send email notification
 python order_processing.py
@@ -143,7 +143,7 @@ python test_system.py
 This will test:
 - ✅ Database initialization
 - ✅ Order processing
-- ✅ Excel file structure
+- ✅ CSV file structure
 - ✅ Duplicate prevention
 
 ## Production Deployment
@@ -212,8 +212,8 @@ This is normal if there are no HTML files in the callback directory yet. The sys
 Starting Bol.com order processing run...
 Retrieved 8 open orders
 Processing 8 new orders
-Generated S-001.xlsx with 8 orders
-✅ Successfully uploaded S-001.xlsx
+Generated S-001.csv with 8 orders
+✅ Successfully uploaded S-001.csv
 Email sent successfully
 Processing run completed. Orders processed: 8
 ```

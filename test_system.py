@@ -1,13 +1,13 @@
 """
 Comprehensive test script to verify all functionality
-Tests: ZPL labels, Shop column, duplicate prevention, Excel structure
+Tests: Tracking labels (Track & Trace codes), Shop column, duplicate prevention, CSV structure
 """
 
 import os
 import sys
 import logging
 from datetime import datetime
-import openpyxl
+import csv
 
 from bol_api_client import BolAPIClient
 from bol_dtos import Order
@@ -28,15 +28,20 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def test_excel_structure(file_path: str) -> bool:
-    """Test Excel file structure and content"""
+def test_csv_structure(file_path: str) -> bool:
+    """Test CSV file structure and content"""
     print("\n" + "="*80)
-    print("TESTING EXCEL FILE STRUCTURE")
+    print("TESTING CSV FILE STRUCTURE")
     print("="*80)
     
     try:
-        wb = openpyxl.load_workbook(file_path)
-        ws = wb.active
+        with open(file_path, 'r', newline='', encoding='utf-8') as csvfile:
+            reader = csv.reader(csvfile)
+            rows = list(reader)
+        
+        if not rows:
+            print("❌ CSV file is empty")
+            return False
         
         # Expected headers (per requirements - column G is "Batch Type", not "Category")
         expected_headers = [
@@ -52,7 +57,7 @@ def test_excel_structure(file_path: str) -> bool:
         ]
         
         # Check headers
-        headers = [cell.value for cell in ws[1]]
+        headers = rows[0]
         print(f"\nHeaders found: {headers}")
         
         if headers != expected_headers:
@@ -83,15 +88,15 @@ def test_excel_structure(file_path: str) -> bool:
         has_zpl = False
         has_shop = False
         
-        for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=False), start=2):
+        for row_idx, row in enumerate(rows[1:], start=2):
             if row_idx > 6:  # Check first 5 data rows
                 break
             
-            if not any(cell.value for cell in row):
+            if not any(cell for cell in row):
                 continue
             
             # Check Shop column
-            shop_value = row[shop_col_idx].value
+            shop_value = row[shop_col_idx] if shop_col_idx < len(row) else None
             if shop_value:
                 has_shop = True
                 if shop_value not in ["Jean", "Trivium"]:
@@ -99,33 +104,34 @@ def test_excel_structure(file_path: str) -> bool:
                     return False
                 print(f"   Row {row_idx}: Shop = {shop_value}")
             
-            # Check ZPL column
-            zpl_value = row[zpl_col_idx].value
-            if zpl_value:
-                has_zpl = True
-                zpl_len = len(str(zpl_value))
-                if zpl_len > 0:
-                    print(f"   Row {row_idx}: ZPL label present ({zpl_len} chars)")
-                    # Check if it looks like ZPL
-                    if str(zpl_value).startswith('^XA') or 'ZPL' in str(zpl_value).upper():
-                        print(f"      ✅ ZPL format detected")
+            # Check Shipping Label column (now contains Track & Trace info)
+            tracking_value = row[zpl_col_idx] if zpl_col_idx < len(row) else None
+            if tracking_value:
+                has_zpl = True  # Keep variable name for compatibility
+                tracking_str = str(tracking_value)
+                tracking_len = len(tracking_str)
+                if tracking_len > 0:
+                    print(f"   Row {row_idx}: Tracking info present: {tracking_str}")
+                    # Check if it looks like tracking info (contains alphanumeric code)
+                    if tracking_len > 5:  # Reasonable minimum length for tracking code
+                        print(f"      ✅ Tracking format valid")
                     else:
-                        print(f"      ⚠️  ZPL format not clearly detected (but data present)")
+                        print(f"      ⚠️  Tracking format looks incomplete (but data present)")
         
         if not has_shop:
             print("❌ No shop values found in data rows")
             return False
         
         if not has_zpl:
-            print("⚠️  No ZPL labels found in data rows (may be empty if API failed)")
+            print("⚠️  No tracking info found in data rows (may be empty if items are not FBR or API failed)")
         else:
-            print("✅ ZPL labels found in Shipping Label column")
+            print("✅ Tracking information found in Shipping Label column")
         
-        print(f"\n✅ Excel structure test PASSED")
+        print(f"\n✅ CSV structure test PASSED")
         return True
         
     except Exception as e:
-        print(f"❌ Error testing Excel file: {e}")
+        print(f"❌ Error testing CSV file: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -206,8 +212,8 @@ def test_duplicate_prevention() -> bool:
         return False
 
 
-def find_latest_excel_file() -> str:
-    """Find the most recently created Excel file"""
+def find_latest_csv_file() -> str:
+    """Find the most recently created CSV file"""
     batch_dir = "batches"
     if not os.path.exists(batch_dir):
         return None
@@ -217,7 +223,7 @@ def find_latest_excel_file() -> str:
     
     for root, dirs, files in os.walk(batch_dir):
         for file in files:
-            if file.endswith('.xlsx'):
+            if file.endswith('.csv'):
                 file_path = os.path.join(root, file)
                 try:
                     mtime = os.path.getmtime(file_path)
@@ -230,20 +236,20 @@ def find_latest_excel_file() -> str:
     return latest_file
 
 
-def find_all_excel_files() -> list:
-    """Find all Excel files in batches directory"""
+def find_all_csv_files() -> list:
+    """Find all CSV files in batches directory"""
     batch_dir = "batches"
     if not os.path.exists(batch_dir):
         return []
     
-    excel_files = []
+    csv_files = []
     for root, dirs, files in os.walk(batch_dir):
         for file in files:
-            if file.endswith('.xlsx'):
+            if file.endswith('.csv'):
                 file_path = os.path.join(root, file)
-                excel_files.append(file_path)
+                csv_files.append(file_path)
     
-    return sorted(excel_files, key=os.path.getmtime, reverse=True)
+    return sorted(csv_files, key=os.path.getmtime, reverse=True)
 
 
 def main():
@@ -274,28 +280,28 @@ def main():
         traceback.print_exc()
         results['processing'] = False
     
-    # Test 3: Excel structure
-    all_excel_files = find_all_excel_files()
-    if all_excel_files:
-        latest_file = all_excel_files[0]
-        print(f"\nFound {len(all_excel_files)} Excel file(s)")
+    # Test 3: CSV structure
+    all_csv_files = find_all_csv_files()
+    if all_csv_files:
+        latest_file = all_csv_files[0]
+        print(f"\nFound {len(all_csv_files)} CSV file(s)")
         print(f"Testing latest file: {os.path.basename(latest_file)}")
-        results['excel'] = test_excel_structure(latest_file)
+        results['csv'] = test_csv_structure(latest_file)
     else:
-        print("\n⚠️  No Excel files found to test")
+        print("\n⚠️  No CSV files found to test")
         print("   This is normal if all orders are already processed.")
         print("   To generate new files:")
         print("   1. Delete bol_orders.db: del bol_orders.db")
         print("   2. Run: python order_processing.py")
         print("   3. Run this test again")
         # Mark as passed since it's expected behavior when all orders are processed
-        results['excel'] = True
+        results['csv'] = True
         print("   To generate new files:")
         print("   1. Delete bol_orders.db: del bol_orders.db")
         print("   2. Run: python order_processing.py")
         print("   3. Run this test again")
         # Don't fail the test if no files - just skip it
-        results['excel'] = None  # None means skipped, not failed
+        results['csv'] = None  # None means skipped, not failed
     
     # Test 4: Duplicate prevention
     results['duplicates'] = test_duplicate_prevention()
@@ -308,7 +314,7 @@ def main():
     for test_name, passed in results.items():
         if passed is None:
             status = "⏭️  SKIPPED"
-            if test_name == 'excel':
+            if test_name == 'csv':
                 print(f"{status} - {test_name} (no files to test - all orders processed)")
             else:
                 print(f"{status} - {test_name}")
@@ -328,7 +334,7 @@ def main():
     if failed_tests:
         print("❌ SOME TESTS FAILED")
     elif skipped_tests and len(skipped_tests) == len(results):
-        print("⚠️  ALL TESTS SKIPPED (no Excel files to test)")
+        print("⚠️  ALL TESTS SKIPPED (no CSV files to test)")
         print("   Run order processing first to generate files")
     elif skipped_tests:
         print("✅ ALL TESTS PASSED (some skipped - expected behavior)")

@@ -8,8 +8,9 @@ A production-ready Python client for the Bol.com Retailer API v10, providing OAu
 - ✅ Retrieve all open orders with automatic pagination
 - ✅ Clean Data Transfer Objects (DTOs) instead of raw JSON
 - ✅ Order classification (Single, SingleLine, Multi)
-- ✅ Excel file generation with correct format
+- ✅ CSV file generation with correct format
 - ✅ Automatic SFTP upload
+- ✅ **Automatic Label PDF Upload** - Monitor and upload shipping labels to FTP/Label
 - ✅ Email notifications with daily summaries
 - ✅ Duplicate order prevention via database
 - ✅ Status callback handler (HTML file processing)
@@ -342,7 +343,7 @@ For complete API documentation, refer to:
 ## Next Steps (Future Milestones)
 
 - Generate shipping labels in ZPL format
-- Excel file generation with specific format
+- CSV file generation with specific format
 - FTP upload functionality
 - Email notifications
 - Admin interface (HTML/PHP)

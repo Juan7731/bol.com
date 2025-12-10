@@ -23,6 +23,8 @@ def verify_ftp_files():
     print(f"Remote directory: {SFTP_REMOTE_BATCH_DIR}\n")
     
     transport = paramiko.Transport((SFTP_HOST, SFTP_PORT))
+    transport.banner_timeout = 30  # Increase banner timeout
+    transport.auth_timeout = 30    # Increase auth timeout
     try:
         transport.connect(username=SFTP_USERNAME, password=SFTP_PASSWORD)
         sftp = paramiko.SFTPClient.from_transport(transport)
@@ -51,12 +53,12 @@ def verify_ftp_files():
         # List all files in the remote directory
         try:
             files = sftp.listdir(SFTP_REMOTE_BATCH_DIR)
-            xlsx_files = [f for f in files if f.endswith('.xlsx')]
+            csv_files = [f for f in files if f.endswith('.csv')]
             
             print(f"📁 Total files in directory: {len(files)}")
-            print(f"📊 Excel (.xlsx) files found: {len(xlsx_files)}\n")
+            print(f"📊 CSV files found: {len(csv_files)}\n")
             
-            if xlsx_files:
+            if csv_files:
                 print("✅ Excel files found on SFTP server:")
                 print("-" * 80)
                 for i, filename in enumerate(sorted(xlsx_files), 1):
@@ -70,7 +72,7 @@ def verify_ftp_files():
                         print(f"{i:3d}. {filename:30s} (Error getting stats: {e})")
                 print("-" * 80)
             else:
-                print("❌ No Excel (.xlsx) files found in the remote directory")
+                print("❌ No CSV files found in the remote directory")
                 print("\nAvailable files:")
                 for f in files[:20]:  # Show first 20 files
                     print(f"  - {f}")

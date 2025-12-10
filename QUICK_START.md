@@ -8,7 +8,7 @@ python order_processing.py
 ```
 **What it does:**
 - Fetches orders from Bol.com
-- Generates Excel files
+- Generates CSV files
 - Uploads to SFTP
 - Sends email notification
 
@@ -44,7 +44,7 @@ python run_callback_scheduler.py
 ```bash
 python quick_test.py
 ```
-Checks database and Excel files
+Checks database and CSV files
 
 ### Full System Test
 ```bash
@@ -58,11 +58,11 @@ python verify_ftp_upload.py
 ```
 Verifies SFTP connection and file upload
 
-### Force Generate Excel (for testing)
+### Force Generate CSV (for testing)
 ```bash
 python generate_test_excel.py
 ```
-Generates Excel files even if orders are already processed
+Generates CSV files even if orders are already processed
 
 ## ⚙️ Configuration Commands
 
@@ -127,8 +127,8 @@ python -c "from order_processing import send_summary_email; send_summary_email(1
 Starting Bol.com order processing run...
 Retrieved 8 open orders
 Processing 8 new orders
-Generated S-001.xlsx with 8 orders
-✅ Successfully uploaded S-001.xlsx
+Generated S-001.csv with 8 orders
+✅ Successfully uploaded S-001.csv
 Email sent successfully
 ```
 
