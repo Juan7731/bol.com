@@ -1,0 +1,34 @@
+# Admin Panel Security
+# Protect the admin directory
+
+# Enable directory listing override
+Options -Indexes
+
+# Require authentication for all files except public assets
+<FilesMatch "\.(php|json)$">
+    # PHP will handle authentication via session
+</FilesMatch>
+
+# Prevent access to sensitive files
+<FilesMatch "\.(json|log|bak)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Enable .htaccess and mod_rewrite
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    
+    # Redirect to login.php if not logged in (handled by PHP sessions)
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^.*$ index.php [L,QSA]
+</IfModule>
+
+# Security headers
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set X-XSS-Protection "1; mode=block"
+</IfModule>
+

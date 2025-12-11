@@ -11,6 +11,8 @@ A production-ready Python client for the Bol.com Retailer API v10, providing OAu
 - ✅ CSV file generation with correct format
 - ✅ Automatic SFTP upload
 - ✅ **Automatic Label PDF Upload** - Monitor and upload shipping labels to FTP/Label
+- ✅ **Automatic Callback Monitoring** - Process status files & delete labels when shipped
+- ✅ **Admin Panel** - Web-based configuration for processing times and schedules
 - ✅ Email notifications with daily summaries
 - ✅ Duplicate order prevention via database
 - ✅ Status callback handler (HTML file processing)

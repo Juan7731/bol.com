@@ -1,0 +1,325 @@
+================================================================================
+CALLBACK STATUS MONITOR - QUICK START GUIDE
+================================================================================
+
+📁 What it does:
+   Monitors FTP/Callbacks every minute, updates Bol.com orders when "verzonden",
+   and automatically deletes the corresponding shipping label PDFs.
+
+🚀 Quick Start:
+
+   1. START CONTINUOUS MONITORING (Recommended):
+      python run_callback_monitor.py
+      
+      → Checks every 60 seconds automatically
+      → Runs until you press Ctrl+C
+
+   2. SINGLE CHECK (Test mode):
+      python run_callback_monitor.py once
+      
+      → Runs once and exits
+
+   3. CUSTOM INTERVAL (e.g., every 30 seconds):
+      python run_callback_monitor.py monitor 30
+
+   4. TEST THE SYSTEM:
+      python test_callback_monitor.py
+
+================================================================================
+HOW IT WORKS
+================================================================================
+
+Step 1: External system places callback file in:
+        /data/sites/web/trivium-ecommercecom/FTP/Callbacks/
+
+Step 2: File contains:
+        - Order ID (e.g., "A000C2F77M")
+        - Status: "verzonden" OR "niet verzonden"
+
+Step 3: Monitor processes file:
+        
+        If status = "verzonden":
+        ✅ Update order in Bol.com API → Mark as shipped
+        ✅ Delete label PDF from /FTP/Label/
+        ✅ Archive callback file to /Callbacks/processed/
+        
+        If status = "niet verzonden":
+        ⚠️  Do nothing (ignore)
+        ✅ Archive callback file
+
+================================================================================
+FILE LOCATIONS
+================================================================================
+
+Callback Files:  /data/sites/web/trivium-ecommercecom/FTP/Callbacks/
+Label PDFs:      /data/sites/web/trivium-ecommercecom/FTP/Label/
+Processed Files: /data/sites/web/trivium-ecommercecom/FTP/Callbacks/processed/
+
+================================================================================
+MONITORING OUTPUT EXAMPLE
+================================================================================
+
+⏰ Check #1 at 2025-12-10 14:30:00
+Found 2 HTML files in callback directory
+File callback_001.html: Order A000C2F77M, Status: verzonden
+✅ Successfully updated order A000C2F77M to shipped
+🗑️  Deleted label PDF: A000C2F77M.pdf
+✅ Successfully processed order A000C2F77M
+
+File callback_002.html: Order B111D3G88N, Status: niet verzonden
+Ignoring order B111D3G88N (not shipped)
+
+📊 Cycle Results:
+   Files processed: 2
+   Orders updated: 1
+   Labels deleted: 1
+   Ignored: 1
+   Errors: 0
+
+⏳ Next check at: 14:31:00
+
+================================================================================
+CALLBACK FILE FORMAT
+================================================================================
+
+The system accepts HTML or text files containing:
+- Order ID (Bol.com order identifier)
+- Status ("verzonden" or "niet verzonden")
+
+Example HTML:
+```
+<html>
+  <body>
+    <div>Order ID: A000C2F77M</div>
+    <div>Status: verzonden</div>
+  </body>
+</html>
+```
+
+Example Text:
+```
+Order: A000C2F77M
+Status: verzonden
+```
+
+================================================================================
+RUNNING AS BACKGROUND SERVICE
+================================================================================
+
+Option 1: Windows PowerShell (Hidden Window)
+   Start-Process python -ArgumentList "run_callback_monitor.py" -WindowStyle Hidden
+
+Option 2: Windows Task Scheduler
+   - Create new task
+   - Trigger: At system startup
+   - Action: Run python.exe with run_callback_monitor.py
+   - Run whether user is logged on or not
+
+Option 3: NSSM (Windows Service)
+   nssm install BolCallbackMonitor python.exe run_callback_monitor.py
+   nssm start BolCallbackMonitor
+
+Option 4: Linux/Mac Background
+   nohup python run_callback_monitor.py &
+
+================================================================================
+WHAT GETS UPDATED
+================================================================================
+
+Bol.com Order Status:
+   ✅ Finds shipment ID for the order
+   ✅ Calls update_shipment() API
+   ✅ Marks order as "SHIPPED"
+   ✅ Updates order status in Bol.com system
+
+PDF Label:
+   ✅ Searches /FTP/Label/ for PDF containing order ID
+   ✅ Deletes matching PDF file(s)
+   ✅ Logs deletion for tracking
+
+Callback File:
+   ✅ Moves to /Callbacks/processed/
+   ✅ Adds timestamp to filename
+   ✅ Keeps for reference
+
+================================================================================
+STATISTICS TRACKED
+================================================================================
+
+Per Cycle:
+   - Files processed
+   - Orders updated
+   - Labels deleted
+   - Ignored (niet verzonden)
+   - Errors
+
+Cumulative (since start):
+   - Total files
+   - Total orders updated
+   - Total labels deleted
+   - Total ignored
+   - Total errors
+
+================================================================================
+TESTING
+================================================================================
+
+Run full test suite:
+   python test_callback_monitor.py
+
+Tests include:
+   ✅ SFTP connection to Callbacks directory
+   ✅ SFTP connection to Label directory
+   ✅ HTML parsing (verzonden vs niet verzonden)
+   ✅ Callback file fetching
+   ✅ Label deletion simulation
+   ✅ Full processing (optional, requires confirmation)
+
+================================================================================
+TROUBLESHOOTING
+================================================================================
+
+Problem: "No callback files found"
+Solution: Check that files exist in /FTP/Callbacks/
+          This is normal if no callbacks received yet
+
+Problem: "Could not parse file"
+Solution: Verify file contains order ID and status
+          Check file format matches expected format
+
+Problem: "No shipment found for order"
+Solution: Order may not have shipment yet
+          Verify order ID is correct
+
+Problem: "SFTP connection failed"
+Solution: Check config.py credentials
+          Verify network connectivity
+
+Problem: "Failed to update order"
+Solution: Check Bol.com API credentials
+          Verify order exists and is in correct status
+
+Problem: "Label PDF not deleted"
+Solution: Check PDF filename contains order ID
+          Verify SFTP write permissions
+          Check logs for specific error
+
+================================================================================
+STOPPING THE MONITOR
+================================================================================
+
+To stop the continuous monitor:
+   Press Ctrl+C
+
+The monitor will:
+   ✅ Stop gracefully
+   ✅ Show final statistics
+   ✅ Log total cycles completed
+
+================================================================================
+CONFIGURATION
+================================================================================
+
+All settings are in config.py:
+
+BOL_CLIENT_ID       = Your Bol.com API client ID
+BOL_CLIENT_SECRET   = Your Bol.com API client secret
+SFTP_HOST          = triviu.ssh.transip.me
+SFTP_PORT          = 22
+SFTP_USERNAME      = trivium-ecommercecom
+SFTP_PASSWORD      = Your SFTP password
+
+Directories are automatically configured based on these settings.
+
+================================================================================
+INTEGRATION WITH EXISTING SYSTEM
+================================================================================
+
+The callback monitor works alongside:
+   ✅ Order processing (order_processing.py)
+   ✅ Label uploader (label_uploader.py)
+   ✅ Batch CSV generation
+   ✅ Email notifications
+
+Complete workflow:
+   1. Orders fetched from Bol.com
+   2. CSV batches generated and uploaded to FTP
+   3. Label PDFs generated and uploaded to FTP/Label/
+   4. External system processes orders
+   5. External system creates callback files
+   6. Callback monitor updates Bol.com and deletes labels
+   7. Email reports sent
+
+================================================================================
+IMPORTANT NOTES
+================================================================================
+
+Status Processing:
+   ⚠️  "verzonden"      → Updates order + Deletes label
+   ⚠️  "niet verzonden" → Does nothing (ignores)
+
+Order ID Matching:
+   ⚠️  Must be valid Bol.com order ID (10+ characters)
+   ⚠️  Example: A000C2F77M, B111D3G88N
+
+PDF Label Matching:
+   ⚠️  Matches by order ID in filename
+   ⚠️  Deletes ALL PDFs containing the order ID
+
+Error Behavior:
+   ⚠️  If API update fails → Label is NOT deleted
+   ⚠️  If label deletion fails → Error logged, continues
+   ⚠️  Connection errors → Retries next cycle
+
+================================================================================
+QUICK COMMANDS REFERENCE
+================================================================================
+
+Start monitoring:           python run_callback_monitor.py
+Single check:               python run_callback_monitor.py once
+Custom interval:            python run_callback_monitor.py monitor 30
+Run tests:                  python test_callback_monitor.py
+Stop monitor:               Press Ctrl+C
+Check status:               View console output
+
+================================================================================
+FILES CREATED
+================================================================================
+
+status_callback_handler.py      - Core callback processing logic
+run_callback_monitor.py         - Continuous monitoring script
+test_callback_monitor.py        - Test suite
+CALLBACK_MONITOR_README.md      - Full documentation
+CALLBACK_MONITOR_QUICKSTART.txt - This file
+
+================================================================================
+DOCUMENTATION
+================================================================================
+
+For complete documentation, see:
+   CALLBACK_MONITOR_README.md
+
+For label upload documentation, see:
+   LABEL_UPLOADER_README.md
+
+For system overview, see:
+   README.md
+
+================================================================================
+STATUS
+================================================================================
+
+✅ Core functionality implemented
+✅ Automatic monitoring every minute
+✅ Bol.com API integration
+✅ Label PDF deletion
+✅ File archival
+✅ Error handling
+✅ Statistics tracking
+✅ Comprehensive testing
+✅ Full documentation
+
+🚀 SYSTEM IS PRODUCTION READY!
+
+================================================================================
+

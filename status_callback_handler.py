@@ -20,12 +20,14 @@ from config import (
     SFTP_PORT,
     SFTP_USERNAME,
     SFTP_PASSWORD,
+    SFTP_REMOTE_LABEL_DIR,
 )
 
 logger = logging.getLogger(__name__)
 
-# FTP Callback directory
+# FTP directories
 SFTP_CALLBACK_DIR = "/data/sites/web/trivium-ecommercecom/FTP/Callbacks"
+SFTP_LABEL_DIR = SFTP_REMOTE_LABEL_DIR  # Use the same path as label_uploader
 
 
 def parse_html_status_file(html_content: str) -> Optional[Dict[str, str]]:
@@ -118,6 +120,68 @@ def get_shipment_id_for_order(client: BolAPIClient, order_id: str) -> Optional[s
         return None
 
 
+def delete_label_pdf_from_ftp(order_id: str) -> bool:
+    """
+    Delete the shipping label PDF from FTP/Label directory after successful shipment.
+    
+    Args:
+        order_id: Bol.com order ID (used as PDF filename)
+        
+    Returns:
+        True if deleted successfully or file not found, False if error
+    """
+    transport = None
+    sftp = None
+    
+    try:
+        # Connect to SFTP
+        transport = paramiko.Transport((SFTP_HOST, SFTP_PORT))
+        transport.banner_timeout = 30
+        transport.auth_timeout = 30
+        transport.connect(username=SFTP_USERNAME, password=SFTP_PASSWORD)
+        sftp = paramiko.SFTPClient.from_transport(transport)
+        
+        # Try to find PDF files that match this order ID
+        try:
+            files = sftp.listdir(SFTP_LABEL_DIR)
+            pdf_files = [f for f in files if f.lower().endswith('.pdf') and order_id in f]
+            
+            if not pdf_files:
+                logger.info(f"No label PDF found for order {order_id} (may have been already deleted)")
+                return True  # Not an error if file doesn't exist
+            
+            # Delete all matching PDF files for this order
+            for pdf_file in pdf_files:
+                remote_path = f"{SFTP_LABEL_DIR}/{pdf_file}"
+                try:
+                    sftp.remove(remote_path)
+                    logger.info(f"🗑️  Deleted label PDF: {pdf_file}")
+                except Exception as e:
+                    logger.error(f"Error deleting {pdf_file}: {e}")
+                    return False
+            
+            return True
+            
+        except FileNotFoundError:
+            logger.warning(f"Label directory not found: {SFTP_LABEL_DIR}")
+            return True  # Not a critical error
+            
+    except Exception as e:
+        logger.error(f"Error connecting to SFTP to delete label: {e}")
+        return False
+    finally:
+        if sftp:
+            try:
+                sftp.close()
+            except:
+                pass
+        if transport:
+            try:
+                transport.close()
+            except:
+                pass
+
+
 def update_order_status_shipped(client: BolAPIClient, order_id: str) -> bool:
     """
     Update Bol.com order status to shipped.
@@ -143,6 +207,10 @@ def update_order_status_shipped(client: BolAPIClient, order_id: str) -> bool:
         try:
             client.update_shipment(shipment_id)
             logger.info(f"✅ Successfully updated order {order_id} (shipment {shipment_id}) to shipped")
+            
+            # Delete the corresponding PDF label from FTP
+            delete_label_pdf_from_ftp(order_id)
+            
             return True
         except Exception as e:
             logger.error(f"Error updating shipment {shipment_id}: {e}")
@@ -244,12 +312,14 @@ def process_callback_files() -> Dict[str, int]:
         - updated: Number of orders successfully updated
         - errors: Number of errors
         - ignored: Number of files with "niet verzonden"
+        - labels_deleted: Number of label PDFs deleted
     """
     stats = {
         'processed': 0,
         'updated': 0,
         'errors': 0,
-        'ignored': 0
+        'ignored': 0,
+        'labels_deleted': 0
     }
     
     logger.info("Starting callback file processing...")
@@ -300,6 +370,7 @@ def process_callback_files() -> Dict[str, int]:
                 
                 if success:
                     stats['updated'] += 1
+                    stats['labels_deleted'] += 1  # Label is deleted in update_order_status_shipped
                     processed_files.append(remote_path)
                     logger.info(f"✅ Successfully processed order {order_id} from {filename}")
                 else:
@@ -385,6 +456,7 @@ def run_callback_processor() -> None:
     logger.info(f"Processing Summary:")
     logger.info(f"  Files processed: {stats['processed']}")
     logger.info(f"  Orders updated: {stats['updated']}")
+    logger.info(f"  Labels deleted: {stats['labels_deleted']}")
     logger.info(f"  Ignored (niet verzonden): {stats['ignored']}")
     logger.info(f"  Errors: {stats['errors']}")
     logger.info("="*80)
