@@ -1,0 +1,296 @@
+Hi Juan,
+
+I’ve looked into your programming experience, and I think your skill set fits this project really well.
+We’re aiming for a functional and perfectly working system, and the programming languages you work with seem ideal for that.
+
+Have you already worked with the Bol.com Retailer API (v10) before, or implemented it for other clients?
+
+It’s also important for us that you can develop the custom environment where the Bol.com orders are automatically split into three categories and exported as Excel files at the configured times.
+Do you foresee any challenges with that part?
+
+Finally, the system will receive callbacks from our side via FTP, and your software should then update the corresponding Bol.com orders as “shipped” based on that callback. Is that something you can handle as well?
+
+Looking forward to hearing your thoughts!
+
+Best regards,
+Constantijn
+Hi Constantijn,
+
+Thanks for the message! I haven’t used the Bol.com Retailer API v10 for a past client, but I’ve integrated many similar marketplace APIs, and Bol’s v10 structure (OAuth, orders, shipping labels, shipments) is straightforward. I’m fully confident I can implement it quickly.
+
+The logic for splitting orders into Single / SingleLine / Multi and exporting the Excel files on scheduled times is no problem same for the FTP upload and the daily email reports. The callback workflow is also doable: once the returned HTML files show “verzonden”, I can have the system automatically update the corresponding Bol.com orders via the API in batch.
+
+Overall, everything you described API integration, scheduling, Excel generation, FTP handling, and the small admin panel is well within my experience, and I can deliver it cleanly and reliably.
+
+Best regards,
+Juan
+C
+Ok, sounds good!
+
+When would you be able to start?
+And how would you prefer to communicate during the project, what works best for you?
+I am available to start work from now, and then can you create milestone?
+All of communication through freelancer, I choose python or c# if you agree
+Please let me know when you ready to start work and then we can start our contract.
+
+please include credentials for start work!
+C
+We have two Bol.com accounts. I suggest we first build and test everything using the first account, and once it’s working properly, we can add the second one later.
+
+I’ll provide you with the credentials for that first account.
+
+We can start today or tomorrow — I’m not sure what our time difference is.
+I’m based in the Netherlands, so we’ll use Dutch local time (CET).
+Okay
+When you share me credentials, I am available from that time.
+C
+that is fine, how you want to create the milstones? What works for you?
+we can devide project several part and then we can process each step,
+Congratulations, your bid has been awarded!
+Click the Accept button below to start working.
+
+This project has a budget of €1125.00 EUR and you will be charged a project commission of €168.75 EUR on milestone release.
+
+Accept
+Milestone created by @constantijns
+part 1
+ — €200.00 EUR
+thanks
+Could you please let me know about what's for milestone 1?
+C
+here is the last version
+📦 Project Description_ Bol (1).docx
+wait
+in this one i added the bol credentials at the bottom, also i explained some more details
+📦 Project Description_ Bol (2).docx
+about part 1 milestone, i suggest that you have got almost the bol api connection running and can get orders out there system and got that part working on the test version.
+because i think that is the easy part for you.
+Perfect, I review the updated document and the Bol API credentials you added,
+Thanks for sending the extra details.
+C
+here you find all documentation about the the v10 bol api
+https://api.bol.com/retailer/public/Retailer-API/v10/functional/retailer-api/orders-shipments.html
+the document i just send you that is when the bol api connection is working
+👍
+C
+I’ll probably write a similar explanation tomorrow for the Bol.com API integration and the details I expect back from it.
+I’m heading to bed now, but I’ll be back at work in about eight hours.
+
+For example, we also need to request a shipping label through the API.
+That label must be in ZPL format, and it should be included in the Excel file as well.
+So when you perform the order request to fetch new orders from Bol.com, you’ll also need to make a label request.
+Perhaps this can also be done via the GET shipment list endpoint — please check.
+
+https://api.bol.com/retailer/public/Retailer-API/v10/functional/retailer-api/shipping-labels.html
+Okay, we can discuss more details tomorrow
+Have a good night
+Nov 25, 2025
+
+👍
+Hello
+Nov 26, 2025
+
+Hi
+Please let me know when you able to discuss more
+Nov 28, 2025
+
+Hello
+I have done the first milestone
+python example_usage.py
+Bol.com API - Simple Usage Example
+
+1. Initializing API client...
+2. Fetching all open orders...
+2025-11-25 06:22:51,140 - bol_api_client - INFO - Fetching orders with status 'OPEN' (page 1)...
+2025-11-25 06:22:51,140 - bol_api_client - INFO - Requesting new access token from Bol.com...
+2025-11-25 06:22:52,600 - bol_api_client - INFO - Successfully obtained access token (expires in 599s)
+2025-11-25 06:22:54,660 - bol_api_client - INFO - Retrieved 1 open orders
+Found 1 open orders
+
+3. Parsing orders into DTOs...
+
+4. Order Summary:
+Total orders: 1
+- Single orders: 1
+- SingleLine orders: 0
+- Multi orders: 0
+
+5. First Order Details:
+Order ID: A000C2F77M
+PS C:\Users\Lucky\Pictures\Bol> python example_usage.py
+Bol.com API - Simple Usage Example
+
+1. Initializing API client...
+2. Fetching all open orders...
+2025-11-28 11:56:31,711 - bol_api_client - INFO - Fetching orders with status 'OPEN' (page 1)...
+2025-11-28 11:56:31,711 - bol_api_client - INFO - Requesting new access token from Bol.com...
+2025-11-28 11:56:34,775 - bol_api_client - INFO - Successfully obtained access token (expires in 599s)
+2025-11-28 11:56:36,739 - bol_api_client - INFO - Retrieved 7 open orders
+Found 7 open orders
+
+3. Parsing orders into DTOs...
+
+4. Order Summary:
+Total orders: 7
+- Single orders: 7
+- SingleLine orders: 0
+- Multi orders: 0
+
+5. First Order Details:
+Order ID: A000C833DU
+Status: OPEN
+Category: Single
+Date: 2025-11-28 20:32:53+01:00
+Total Items: 1
+Customer:
+Address:
+
+Order Items:
+- N/A
+EAN: 8721161953227
+Quantity: 1
+
+✓ Example completed successfully!
+
+client: I think the next milestone is that you convert the data you get from the bol API:
+- Classify each order into one of three categories (Single, SingleLine, Multi) based on quantity and EAN structure.
+- Generate Excel (.xlsx) files in a specific format (examples provided).
+- Set up to four automated processing times per day. (start with 8:00 and 15:01)
+- Automatically upload the generated Excel files to an FTP server.
+- Send email notifications with daily summaries (configurable email settings).
+
+For the SMTP generated files upload could you please send me those field.
+
+EMAIL_SMTP_HOST, EMAIL_SMTP_PORT, EMAIL_USERNAME, EMAIL_PASSWORD, EMAIL_FROM, EMAIL_RECIPIENTS.
+C
+EMAIL_SMTP_HOST, smtp.transip.email
+EMAIL_SMTP_PORT, 465
+EMAIL_USERNAME, info@trivium-ecommerce.com
+EMAIL_PASSWORD, juzge5-habkur-kidtoP
+EMAIL_FROM, info@trivium-ecommerce.com
+EMAIL_RECIPIENTS. finance@trivium-ecommerce.com; constantijn@trivium-ecommerce.com; info@trivium-ecommerce.com
+thank you
+C
+We see some incomming mails. Nice
+👍
+2025-12-03 12:27:50,047 - __main__ - INFO -
+================================================================================
+2025-12-03 12:27:50,048 - __main__ - INFO - BOL.COM ORDER PROCESSING - REQUIREMENT TESTING
+2025-12-03 12:27:50,048 - __main__ - INFO - ================================================================================
+2025-12-03 12:27:50,048 - __main__ - INFO - Test started at: 2025-12-03 12:27:50.048381
+2025-12-03 12:27:50,049 - __main__ - INFO - Log file: test_results_20251203_122750.log
+
+2025-12-03 12:27:50,049 - __main__ - INFO - Step 1: Fetching orders from Bol.com API...
+2025-12-03 12:27:50,049 - bol_api_client - INFO - Fetching orders with status 'OPEN' (page 1)...
+2025-12-03 12:27:50,049 - bol_api_client - INFO - Requesting new access token from Bol.com...
+2025-12-03 12:27:51,939 - bol_api_client - INFO - Successfully obtained access token (expires in 599s)
+2025-12-03 12:27:53,084 - bol_api_client - INFO - Retrieved 8 open orders
+2025-12-03 12:27:53,085 - __main__ - INFO - Fetched 8 open orders from Bol.com
+2025-12-03 12:27:53,085 - __main__ - INFO -
+================================================================================
+2025-12-03 12:27:53,086 - __main__ - INFO - TESTING REQUIREMENT 1: Order Classification
+2025-12-03 12:27:53,086 - __main__ - INFO - ================================================================================
+2025-12-03 12:27:53,087 - __main__ - INFO - ✅ COMPLETE - Requirement 1: Order Classification
+2025-12-03 12:27:53,087 - __main__ - INFO - Details: Classified 8 orders: {'Single': 8, 'SingleLine': 0, 'Multi': 0}
+✅ COMPLETE - Requirement 1: Order Classification
+Details: Classified 8 orders: {'Single': 8, 'SingleLine': 0, 'Multi': 0}
+2025-12-03 12:27:53,087 - __main__ - INFO -
+================================================================================
+2025-12-03 12:27:53,088 - __main__ - INFO - TESTING REQUIREMENT 2: Excel File Generation
+2025-12-03 12:27:53,088 - __main__ - INFO - ================================================================================
+2025-12-03 12:27:53,112 - order_processing - INFO - Generated S-005.xlsx with 8 orders
+2025-12-03 12:27:53,166 - __main__ - INFO - ✅ COMPLETE - Requirement 2: Excel Generation
+2025-12-03 12:27:53,166 - __main__ - INFO - Details: Generated 1 Excel files: ['S-005.xlsx']
+✅ COMPLETE - Requirement 2: Excel Generation
+Details: Generated 1 Excel files: ['S-005.xlsx']
+2025-12-03 12:27:53,168 - __main__ - INFO -
+================================================================================
+2025-12-03 12:27:53,198 - __main__ - INFO - TESTING REQUIREMENT 3: Automated Processing Times
+2025-12-03 12:27:53,248 - __main__ - INFO - ================================================================================
+2025-12-03 12:27:53,248 - __main__ - INFO - ✅ COMPLETE - Requirement 3: Automated Processing Times
+2025-12-03 12:27:53,248 - __main__ - INFO - Details: Configured 2 processing times: 08:00, 15:01
+✅ COMPLETE - Requirement 3: Automated Processing Times
+Details: Configured 2 processing times: 08:00, 15:01
+2025-12-03 12:27:53,249 - __main__ - INFO -
+================================================================================
+2025-12-03 12:27:53,249 - __main__ - INFO - TESTING REQUIREMENT 4: FTP/SFTP Upload
+2025-12-03 12:27:53,249 - __main__ - INFO - ================================================================================
+2025-12-03 12:27:54,278 - paramiko.transport - INFO - Connected (version 2.0, client OpenSSH_8.4p1)
+2025-12-03 12:27:55,779 - paramiko.transport - INFO - Auth banner: b'**************************************************************\n* *\n*
+*\n* Unauthorized access to this *\n* system/network is prohibited. *\n* *\n*
+*\n**************************************************************\n'
+2025-12-03 12:27:55,780 - paramiko.transport - INFO - Authentication (password) successful!
+2025-12-03 12:27:57,029 - paramiko.transport.sftp - INFO - [chan 0] Opened sftp connection (server version 3)
+2025-12-03 12:27:57,745 - order_processing - INFO - Uploading S-005.xlsx to /data/sites/web/trivium-ecommercecom/FTP/Batches/S-005.xlsx
+2025-12-03 12:27:58,897 - __main__ - INFO - ✅ COMPLETE - Requirement 4: FTP Upload
+2025-12-03 12:27:58,897 - __main__ - INFO - Details: Successfully uploaded 1 files to /data/sites/web/trivium-ecommercecom/FTP/Batches
+✅ COMPLETE - Requirement 4: FTP Upload
+Details: Successfully uploaded 1 files to /data/sites/web/trivium-ecommercecom/FTP/Batches
+2025-12-03 12:27:58,898 - __main__ - INFO -
+================================================================================
+2025-12-03 12:27:58,898 - __main__ - INFO - TESTING REQUIREMENT 5: Email Notifications
+2025-12-03 12:27:58,898 - __main__ - INFO - ================================================================================
+2025-12-03 12:27:58,898 - __main__ - INFO - ✅ COMPLETE - Requirement 5: Email Notifications
+2025-12-03 12:27:58,898 - __main__ - INFO - Details: Email configured for 3 recipients: finance@trivium-ecommerce.com,
+constantijn@trivium-ecommerce.com, info@trivium-ecommerce.com
+✅ COMPLETE - Requirement 5: Email Notifications
+Details: Email configured for 3 recipients: finance@trivium-ecommerce.com, constantijn@trivium-ecommerce.com, info@trivium-ecommerce.com
+2025-12-03 12:27:58,899 - __main__ - INFO -
+================================================================================
+2025-12-03 12:27:58,899 - __main__ - INFO - TEST SUMMARY
+2025-12-03 12:27:58,899 - __main__ - INFO - ================================================================================
+2025-12-03 12:27:58,900 - __main__ - INFO - ✅ COMPLETE - Requirement 1: Order Classification
+2025-12-03 12:27:58,900 - __main__ - INFO - Classified 8 orders: {'Single': 8, 'SingleLine': 0, 'Multi': 0}
+2025-12-03 12:27:58,900 - __main__ - INFO - ✅ COMPLETE - Requirement 2: Excel Generation
+2025-12-03 12:27:58,900 - __main__ - INFO - Generated 1 Excel files: ['S-005.xlsx']
+2025-12-03 12:27:58,900 - __main__ - INFO - ✅ COMPLETE - Requirement 3: Automated Processing Times
+2025-12-03 12:27:58,901 - __main__ - INFO - Configured 2 processing times: 08:00, 15:01
+2025-12-03 12:27:58,901 - __main__ - INFO - ✅ COMPLETE - Requirement 4: FTP Upload
+2025-12-03 12:27:58,901 - __main__ - INFO - Successfully uploaded 1 files to /data/sites/web/trivium-ecommercecom/FTP/Batches
+2025-12-03 12:27:58,901 - __main__ - INFO - ✅ COMPLETE - Requirement 5: Email Notifications
+2025-12-03 12:27:58,901 - __main__ - INFO - Email configured for 3 recipients: finance@trivium-ecommerce.com, constantijn@trivium-ecommerce.com, info@trivium-ecommerce.com
+2025-12-03 12:27:58,901 - __main__ - INFO -
+================================================================================
+2025-12-03 12:27:58,902 - __main__ - INFO - ✅ ALL REQUIREMENTS COMPLETE
+2025-12-03 12:27:58,902 - __main__ - INFO - ================================================================================
+2025-12-03 12:27:58,902 - __main__ - INFO - Test completed at: 2025-12-03 12:27:58.902897
+2025-12-03 12:27:58,902 - __main__ - INFO - Full log saved to: test_results_20251203_122750.log
+Please check second part, done!
+C
+you placed the excel files on the FTP?
+Screenshot_101.png
+Screenshot_101.png
+C
+ok ok ! great! let me check
+generated excel files and then I will transfer it
+C
+if you can give me them via here, i can check it more easy.
+Sure
+Please check FTP
+C
+Ok, this seems perfect, looks good!
+
+Couple of questions:
+
+1.
+i’m missing the ZPL label in column E
+https://api.bol.com/retailer/public/Retailer-API/v10/functional/retailer-api/shipping-labels.html
+
+We use ‘verzenden via bol’ as shipping label for every order.
+
+2.
+You now added 6 files, but they contain the same orders, that must not happen in de future, so you must make a DB perhaps were you register each unique order that is it pending in a batch number X, Y or Z.
+So we can’t send any order double.
+
+3. the second account you can find more multi orders, so i can see how that arrives in the excel file.
+
+f418eb2c-ca2c-4138-b5d3-fa89cb800dad
+
+secret:
+rTj0Z!K1sZThWW!Rgu6u0t2@l62Z8jKXQDcNkx(QH0IX@m+cwiYnHpT4NNi42iVF
+Take out the column “customer name”; it seems to be empty now. If it’s empty, you can remove it.
+
+We need an additional column indicating which shop the order comes from. You currently have two shops, with the shop names “Jean” and “Trivium.”
+
+Also, we have different names in the sample files. We can use your column names, but never change them.
+
