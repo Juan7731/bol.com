@@ -172,12 +172,15 @@ def process_all_accounts() -> Dict:
         # Use account name as shop name, or default
         shop_name = account_name if account_name in ['Trivium', 'Jean'] else default_shop
         
+        # Get test_mode from config, default to False (production)
+        test_mode = config.get('test_mode', False)
+        
         result = process_account(
             account_name=account_name,
             client_id=client_id,
             client_secret=client_secret,
             shop_name=shop_name,
-            test_mode=True  # TODO: Get from config
+            test_mode=test_mode
         )
         
         results.append(result)

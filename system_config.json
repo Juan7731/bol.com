@@ -45,5 +45,6 @@
   ],
   "shop_mapping": {
     "default": "Jean"
-  }
+  },
+  "test_mode": false
 }
