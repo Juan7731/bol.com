@@ -1,0 +1,1 @@
+Set objShell = CreateObject("WScript.Shell")\nSet objExec = objShell.Exec("python \"C:\xampp\htdocs\github\run_realtime_monitor.py\"")\nSet fso = CreateObject("Scripting.FileSystemObject")\nSet pidFile = fso.CreateTextFile("C:\xampp\htdocs\github\monitor.pid", True)\npidFile.WriteLine objExec.ProcessID\npidFile.Close

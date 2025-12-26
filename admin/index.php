@@ -365,6 +365,73 @@ $last_updated = $configManager->getLastUpdated();
             background: #e9ecef;
         }
         
+        .btn-success {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+        }
+        
+        .btn-success:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(40, 167, 69, 0.4);
+        }
+        
+        .btn-danger {
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(220, 53, 69, 0.4);
+        }
+        
+        .monitor-control {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .monitor-status {
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 2px solid #e0e0e0;
+        }
+        
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 16px;
+            font-weight: 600;
+        }
+        
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        
+        .status-dot.status-online {
+            background: #28a745;
+            box-shadow: 0 0 8px rgba(40, 167, 69, 0.6);
+        }
+        
+        .status-dot.status-offline {
+            background: #dc3545;
+        }
+        
+        .status-dot.status-unknown {
+            background: #ffc107;
+        }
+        
+        .monitor-actions {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        
         .info-box {
             background: #e8f4f8;
             border-left: 4px solid #3498db;
@@ -603,6 +670,52 @@ $last_updated = $configManager->getLastUpdated();
                 </form>
             </div>
         </div>
+        
+        <!-- Monitor Control Card -->
+        <div class="card">
+            <div class="card-header">
+                <h2>
+                    <span class="icon">🚀</span>
+                    Real-Time Monitor Control
+                </h2>
+                <p>Start or stop the real-time order processing monitor</p>
+            </div>
+            
+            <div class="card-body">
+                <div class="form-section">
+                    <div class="form-section-description">
+                        The real-time monitor checks for new orders every minute and processes them automatically. 
+                        It also processes at scheduled times configured above (08:00, 15:01, etc.).
+                    </div>
+                    
+                    <div class="monitor-control">
+                        <div class="monitor-status" id="monitorStatus">
+                            <div class="status-indicator" id="statusIndicator">
+                                <span class="status-dot status-offline"></span>
+                                <span class="status-text">Status: Unknown</span>
+                            </div>
+                        </div>
+                        
+                        <div class="monitor-actions">
+                            <button type="button" class="btn btn-success" id="startMonitorBtn" onclick="startMonitor()">
+                                ▶️ Start Monitor
+                            </button>
+                            <button type="button" class="btn btn-danger" id="stopMonitorBtn" onclick="stopMonitor()" style="display: none;">
+                                ⏹️ Stop Monitor
+                            </button>
+                            <button type="button" class="btn btn-secondary" onclick="checkMonitorStatus()">
+                                🔄 Refresh Status
+                            </button>
+                        </div>
+                        
+                        <div class="info-box" style="margin-top: 20px;">
+                            <strong>ℹ️ Note:</strong> The monitor runs in the background. Use this button to start it remotely. 
+                            To stop the monitor, click "Stop Monitor" or press Ctrl+C in the terminal where it's running.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
     
     <div class="footer">
@@ -634,6 +747,141 @@ $last_updated = $configManager->getLastUpdated();
             }
         `;
         document.head.appendChild(style);
+        
+        // Monitor control functions
+        function updateMonitorStatus(status) {
+            const indicator = document.getElementById('statusIndicator');
+            const statusText = indicator.querySelector('.status-text');
+            const statusDot = indicator.querySelector('.status-dot');
+            const startBtn = document.getElementById('startMonitorBtn');
+            const stopBtn = document.getElementById('stopMonitorBtn');
+            
+            statusDot.className = 'status-dot';
+            
+            if (status === 'running') {
+                statusDot.classList.add('status-online');
+                statusText.textContent = 'Status: Running';
+                startBtn.style.display = 'none';
+                stopBtn.style.display = 'inline-flex';
+            } else if (status === 'stopped') {
+                statusDot.classList.add('status-offline');
+                statusText.textContent = 'Status: Stopped';
+                startBtn.style.display = 'inline-flex';
+                stopBtn.style.display = 'none';
+            } else {
+                statusDot.classList.add('status-unknown');
+                statusText.textContent = 'Status: Unknown';
+                startBtn.style.display = 'inline-flex';
+                stopBtn.style.display = 'none';
+            }
+        }
+        
+        function startMonitor() {
+            if (!confirm('Start the real-time monitor? This will begin processing orders every minute.')) {
+                return;
+            }
+            
+            const startBtn = document.getElementById('startMonitorBtn');
+            startBtn.disabled = true;
+            startBtn.textContent = '⏳ Starting...';
+            
+            fetch('start_monitor.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ action: 'start' })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    updateMonitorStatus('running');
+                    alert('✅ Monitor started successfully!');
+                } else {
+                    alert('❌ Error: ' + (data.message || 'Failed to start monitor'));
+                    updateMonitorStatus('stopped');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('❌ Error starting monitor: ' + error.message);
+                updateMonitorStatus('stopped');
+            })
+            .finally(() => {
+                startBtn.disabled = false;
+                startBtn.textContent = '▶️ Start Monitor';
+            });
+        }
+        
+        function stopMonitor() {
+            if (!confirm('Stop the real-time monitor? This will stop processing orders.')) {
+                return;
+            }
+            
+            const stopBtn = document.getElementById('stopMonitorBtn');
+            stopBtn.disabled = true;
+            stopBtn.textContent = '⏳ Stopping...';
+            
+            fetch('start_monitor.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ action: 'stop' })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    updateMonitorStatus('stopped');
+                    alert('✅ Monitor stopped successfully!');
+                } else {
+                    alert('❌ Error: ' + (data.message || 'Failed to stop monitor'));
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('❌ Error stopping monitor: ' + error.message);
+            })
+            .finally(() => {
+                stopBtn.disabled = false;
+                stopBtn.textContent = '⏹️ Stop Monitor';
+            });
+        }
+        
+        function checkMonitorStatus() {
+            const refreshBtn = event.target;
+            refreshBtn.disabled = true;
+            refreshBtn.textContent = '🔄 Checking...';
+            
+            fetch('start_monitor.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ action: 'status' })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status) {
+                    updateMonitorStatus(data.status);
+                } else {
+                    updateMonitorStatus('unknown');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                updateMonitorStatus('unknown');
+            })
+            .finally(() => {
+                refreshBtn.disabled = false;
+                refreshBtn.textContent = '🔄 Refresh Status';
+            });
+        }
+        
+        // Check status on page load
+        window.addEventListener('load', function() {
+            checkMonitorStatus();
+        });
     </script>
 </body>
 </html>
