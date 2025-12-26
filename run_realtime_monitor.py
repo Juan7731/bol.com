@@ -93,38 +93,83 @@ def process_orders_realtime() -> Dict:
                 'results': []
             }
         
+        logger.info(f"Found {len(active_accounts)} active account(s) to process")
+        
         results = []
         total_orders_all = 0
+        account_index = 0
         
         for account in active_accounts:
-            account_name = account['name']
-            client_id = account['client_id']
-            client_secret = account['client_secret']
+            account_index += 1
+            account_name = account.get('name', 'Unknown')
+            client_id = account.get('client_id', '')
+            client_secret = account.get('client_secret', '')
+            
+            if not client_id or not client_secret:
+                logger.error(f"⚠️  Skipping account {account_name}: Missing credentials")
+                results.append({
+                    'account': account_name,
+                    'shop': account_name,
+                    'total_orders': 0,
+                    'processed': 0,
+                    'success': False,
+                    'error': 'Missing credentials'
+                })
+                continue
             
             # Use account name as shop name
             shop_name = account_name if account_name in ['Trivium', 'Jean'] else default_shop
             
-            logger.info(f"Checking account: {account_name} (Shop: {shop_name})")
+            logger.info("")
+            logger.info(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            logger.info(f"Processing Account {account_index}/{len(active_accounts)}: {account_name} (Shop: {shop_name})")
+            logger.info(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
             
-            # Process account in PRODUCTION mode
-            result = process_account(
-                account_name=account_name,
-                client_id=client_id,
-                client_secret=client_secret,
-                shop_name=shop_name,
-                test_mode=False  # PRODUCTION MODE
-            )
-            
-            results.append(result)
-            
-            # Only count orders that were actually processed
-            orders_processed = result.get('processed', 0)
-            total_orders_all += orders_processed
-            
-            if orders_processed > 0:
-                logger.info(f"✅ Processed {orders_processed} order(s) for {account_name}")
-            else:
-                logger.info(f"ℹ️  No new orders for {account_name}")
+            try:
+                # Process account in PRODUCTION mode
+                result = process_account(
+                    account_name=account_name,
+                    client_id=client_id,
+                    client_secret=client_secret,
+                    shop_name=shop_name,
+                    test_mode=False  # PRODUCTION MODE
+                )
+                
+                results.append(result)
+                
+                # Only count orders that were actually processed
+                orders_processed = result.get('processed', 0)
+                total_orders_all += orders_processed
+                
+                if result.get('success', False):
+                    if orders_processed > 0:
+                        logger.info(f"✅ Account {account_name}: Successfully processed {orders_processed} order(s)")
+                    else:
+                        logger.info(f"✅ Account {account_name}: No new orders (check completed successfully)")
+                else:
+                    error_msg = result.get('error', 'Unknown error')
+                    logger.error(f"❌ Account {account_name}: Processing failed - {error_msg}")
+                    
+            except Exception as account_error:
+                logger.error(f"❌ Exception while processing account {account_name}: {account_error}")
+                import traceback
+                logger.error(traceback.format_exc())
+                results.append({
+                    'account': account_name,
+                    'shop': shop_name,
+                    'total_orders': 0,
+                    'processed': 0,
+                    'success': False,
+                    'error': str(account_error)
+                })
+                # Continue processing next account even if this one failed
+                continue
+        
+        # Summary
+        logger.info("")
+        logger.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        logger.info(f"Processing Summary: {len(results)} account(s) processed, {total_orders_all} total order(s)")
+        logger.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         
         return {
             'accounts_processed': len(results),
@@ -133,7 +178,7 @@ def process_orders_realtime() -> Dict:
         }
         
     except Exception as e:
-        logger.error(f"Error processing orders: {e}")
+        logger.error(f"❌ Fatal error processing orders: {e}")
         import traceback
         logger.error(traceback.format_exc())
         return {
@@ -209,23 +254,44 @@ def main():
             result = process_orders_realtime()
             
             orders_this_check = result.get('total_orders', 0)
+            accounts_processed = result.get('accounts_processed', 0)
             total_orders_processed += orders_this_check
+            
+            # Show detailed results for each account
+            results_list = result.get('results', [])
+            if results_list:
+                logger.info("")
+                logger.info("Account Processing Results:")
+                for acc_result in results_list:
+                    acc_name = acc_result.get('account', 'Unknown')
+                    acc_processed = acc_result.get('processed', 0)
+                    acc_total = acc_result.get('total_orders', 0)
+                    acc_success = acc_result.get('success', False)
+                    
+                    if acc_success:
+                        if acc_processed > 0:
+                            logger.info(f"  ✅ {acc_name}: {acc_processed} order(s) processed (from {acc_total} total)")
+                        else:
+                            logger.info(f"  ✅ {acc_name}: No new orders (checked {acc_total} total)")
+                    else:
+                        error_msg = acc_result.get('error', 'Unknown error')
+                        logger.error(f"  ❌ {acc_name}: Failed - {error_msg}")
             
             # Summary for this check
             if should_force_process:
                 if orders_this_check > 0:
                     logger.info("")
-                    logger.info(f"✅ Scheduled check #{check_count} complete: {orders_this_check} order(s) processed")
+                    logger.info(f"✅ Scheduled check #{check_count} complete: {orders_this_check} order(s) processed from {accounts_processed} account(s)")
                 else:
                     logger.info("")
-                    logger.info(f"✅ Scheduled check #{check_count} complete: No new orders (scheduled run completed)")
+                    logger.info(f"✅ Scheduled check #{check_count} complete: No new orders from {accounts_processed} account(s) (scheduled run completed)")
             else:
                 if orders_this_check > 0:
                     logger.info("")
-                    logger.info(f"✅ Check #{check_count} complete: {orders_this_check} order(s) processed")
+                    logger.info(f"✅ Check #{check_count} complete: {orders_this_check} order(s) processed from {accounts_processed} account(s)")
                 else:
                     logger.info("")
-                    logger.info(f"ℹ️  Check #{check_count} complete: No new orders")
+                    logger.info(f"ℹ️  Check #{check_count} complete: No new orders from {accounts_processed} account(s)")
             
             logger.info(f"📊 Total orders processed since start: {total_orders_processed}")
             

@@ -48,15 +48,26 @@ def process_account(account_name: str, client_id: str, client_secret: str,
     logger.info(f"Processing account: {account_name} (Shop: {shop_name})")
     
     try:
-        # Initialize database
-        init_database()
+        # Initialize database (shared across all accounts)
+        try:
+            init_database()
+        except Exception as db_error:
+            logger.warning(f"Database initialization warning for {account_name}: {db_error} (continuing anyway)")
         
         # Create API client for this account
-        client = BolAPIClient(client_id, client_secret, test_mode=test_mode)
+        try:
+            client = BolAPIClient(client_id, client_secret, test_mode=test_mode)
+        except Exception as client_error:
+            logger.error(f"Failed to create API client for {account_name}: {client_error}")
+            raise
         
         # Fetch orders
-        raw_orders = client.get_all_open_orders()
-        all_orders = [Order.from_dict(o) for o in raw_orders]
+        try:
+            raw_orders = client.get_all_open_orders()
+            all_orders = [Order.from_dict(o) for o in raw_orders]
+        except Exception as fetch_error:
+            logger.error(f"Failed to fetch orders for {account_name}: {fetch_error}")
+            raise
         
         if not all_orders:
             logger.info(f"No open orders for account {account_name}")
@@ -70,12 +81,16 @@ def process_account(account_name: str, client_id: str, client_secret: str,
             }
         
         # Filter out already processed orders
-        order_ids = [order.order_id for order in all_orders]
-        unprocessed_order_ids = get_unprocessed_orders(order_ids)
-        orders = [order for order in all_orders if order.order_id in unprocessed_order_ids]
+        try:
+            order_ids = [order.order_id for order in all_orders]
+            unprocessed_order_ids = get_unprocessed_orders(order_ids)
+            orders = [order for order in all_orders if order.order_id in unprocessed_order_ids]
+        except Exception as filter_error:
+            logger.error(f"Failed to filter orders for {account_name}: {filter_error}")
+            raise
         
         if not orders:
-            logger.info(f"No new unprocessed orders for account {account_name}")
+            logger.info(f"No new unprocessed orders for account {account_name} (total open: {len(all_orders)})")
             return {
                 'account': account_name,
                 'shop': shop_name,
@@ -88,7 +103,11 @@ def process_account(account_name: str, client_id: str, client_secret: str,
         logger.info(f"Processing {len(orders)} new orders for {account_name} (from {len(all_orders)} total)")
         
         # Classify orders
-        grouped = classify_orders(orders)
+        try:
+            grouped = classify_orders(orders)
+        except Exception as classify_error:
+            logger.error(f"Failed to classify orders for {account_name}: {classify_error}")
+            raise
         
         # Temporarily override DEFAULT_SHOP_NAME to use the correct shop for this account
         original_shop_name = order_processing.DEFAULT_SHOP_NAME
@@ -98,22 +117,32 @@ def process_account(account_name: str, client_id: str, client_secret: str,
             # Generate Excel files with the correct shop name
             files_created, total_orders = generate_excel_batches(grouped, client)
         finally:
-            # Restore original shop name
+            # Restore original shop name (always restore, even if error)
             order_processing.DEFAULT_SHOP_NAME = original_shop_name
         
         # Upload CSV files
         if files_created:
-            upload_files_sftp(files_created)
+            try:
+                upload_files_sftp(files_created)
+            except Exception as upload_error:
+                logger.error(f"Failed to upload CSV files for {account_name}: {upload_error}")
+                # Continue anyway - files are created locally
             
             # Upload label PDFs
             if LABEL_UPLOADER_AVAILABLE:
                 try:
                     upload_all_labels()
-                except Exception as e:
-                    logger.error(f"Failed to upload label PDFs for {account_name}: {e}")
+                except Exception as label_error:
+                    logger.error(f"Failed to upload label PDFs for {account_name}: {label_error}")
+                    # Continue anyway - labels are saved locally
         
-        # Send email summary
-        send_summary_email(total_orders, files_created)
+        # Send email summary (non-critical, don't fail if this errors)
+        try:
+            send_summary_email(total_orders, files_created)
+        except Exception as email_error:
+            logger.warning(f"Failed to send email for {account_name}: {email_error} (non-critical)")
+        
+        logger.info(f"✅ Successfully completed processing for {account_name}: {total_orders} order(s) processed")
         
         return {
             'account': account_name,
@@ -125,7 +154,9 @@ def process_account(account_name: str, client_id: str, client_secret: str,
         }
         
     except Exception as e:
-        logger.error(f"Error processing account {account_name}: {e}")
+        logger.error(f"❌ Error processing account {account_name}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return {
             'account': account_name,
             'shop': shop_name,
