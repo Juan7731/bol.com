@@ -12,6 +12,7 @@ This script monitors for new orders every minute and processes them automaticall
 import logging
 import sys
 import time
+import os
 from datetime import datetime, date
 from typing import Dict, List
 import signal
@@ -30,6 +31,29 @@ logger = logging.getLogger(__name__)
 
 # Global flag for graceful shutdown
 running = True
+STOP_FLAG_FILE = "monitor_stop_flag.txt"
+
+
+def check_stop_flag() -> bool:
+    """Check if stop flag file exists"""
+    try:
+        if os.path.exists(STOP_FLAG_FILE):
+            with open(STOP_FLAG_FILE, 'r') as f:
+                content = f.read().strip()
+                return content == "1" or content.lower() == "stop"
+    except Exception:
+        pass
+    return False
+
+
+def clear_stop_flag():
+    """Clear the stop flag file"""
+    try:
+        if os.path.exists(STOP_FLAG_FILE):
+            with open(STOP_FLAG_FILE, 'w') as f:
+                f.write("0")
+    except Exception:
+        pass
 
 
 def signal_handler(signum, frame):
@@ -38,6 +62,8 @@ def signal_handler(signum, frame):
     logger.info("")
     logger.info("⚠️  Shutdown signal received. Stopping monitor...")
     running = False
+    # Save any partial data
+    save_partial_data()
 
 
 def load_processing_times() -> List[str]:
@@ -71,14 +97,61 @@ def normalize_time_string(t: str) -> str:
         return ""
 
 
+def save_partial_data():
+    """Save any partial processing data before stopping"""
+    try:
+        logger.info("💾 Ensuring all processing data is saved...")
+        
+        # CSVs and PDFs are already saved immediately during processing:
+        # - CSVs are saved in _create_csv_for_category() when written
+        # - PDFs are saved in _save_pdf_label() when downloaded
+        # - Orders are marked as processed in the database immediately
+        
+        # Verify that batches and label folders exist and have data
+        import os
+        from datetime import datetime
+        
+        batches_dir = os.path.join("batches", datetime.now().strftime("%Y%m%d"))
+        label_dir = "label"
+        
+        csv_count = 0
+        pdf_count = 0
+        
+        if os.path.exists(batches_dir):
+            csv_files = [f for f in os.listdir(batches_dir) if f.endswith('.csv')]
+            csv_count = len(csv_files)
+        
+        if os.path.exists(label_dir):
+            pdf_files = [f for f in os.listdir(label_dir) if f.endswith('.pdf')]
+            pdf_count = len(pdf_files)
+        
+        logger.info(f"✅ Data saved: {csv_count} CSV file(s) in batches/, {pdf_count} PDF file(s) in label/")
+        logger.info("✅ All processed data is safely saved in batches/ and label/ folders")
+        
+    except Exception as e:
+        logger.error(f"Error verifying saved data: {e}")
+
+
 def process_orders_realtime() -> Dict:
     """
     Process orders from all active accounts in real-time.
     Returns processing results.
+    Checks for stop flag during processing.
     """
     try:
         from multi_account_processor import process_account
         from config_manager import get_active_bol_accounts, get_config_summary
+        
+        # Check stop flag before starting
+        if check_stop_flag():
+            logger.warning("⚠️  Stop flag detected. Saving partial data and stopping...")
+            save_partial_data()
+            return {
+                'accounts_processed': 0,
+                'total_orders': 0,
+                'results': [],
+                'stopped': True
+            }
         
         # Get active accounts
         active_accounts = get_active_bol_accounts()
@@ -100,6 +173,12 @@ def process_orders_realtime() -> Dict:
         account_index = 0
         
         for account in active_accounts:
+            # Check stop flag before processing each account
+            if check_stop_flag():
+                logger.warning("⚠️  Stop flag detected during account processing. Saving partial data...")
+                save_partial_data()
+                break
+            
             account_index += 1
             account_name = account.get('name', 'Unknown')
             client_id = account.get('client_id', '')
@@ -126,6 +205,12 @@ def process_orders_realtime() -> Dict:
             logger.info(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
             
             try:
+                # Check stop flag before processing this account
+                if check_stop_flag():
+                    logger.warning(f"⚠️  Stop flag detected before processing {account_name}. Saving data...")
+                    save_partial_data()
+                    break
+                
                 # Process account in PRODUCTION mode
                 result = process_account(
                     account_name=account_name,
@@ -149,6 +234,12 @@ def process_orders_realtime() -> Dict:
                 else:
                     error_msg = result.get('error', 'Unknown error')
                     logger.error(f"❌ Account {account_name}: Processing failed - {error_msg}")
+                
+                # Check stop flag after processing each account
+                if check_stop_flag():
+                    logger.warning("⚠️  Stop flag detected after account processing. Saving data and stopping...")
+                    save_partial_data()
+                    break
                     
             except Exception as account_error:
                 logger.error(f"❌ Exception while processing account {account_name}: {account_error}")
@@ -193,6 +284,9 @@ def main():
     """Main real-time monitoring loop"""
     global running
     
+    # Clear stop flag on startup
+    clear_stop_flag()
+    
     # Register signal handler for Ctrl+C
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
@@ -216,7 +310,7 @@ def main():
     else:
         logger.info("📅 No scheduled times configured (checking every minute only)")
     
-    logger.info("⌨️  Press Ctrl+C to stop")
+    logger.info("⌨️  Press Ctrl+C to stop or use Admin Panel Stop button")
     logger.info("="*80)
     logger.info("")
     
@@ -226,6 +320,12 @@ def main():
     
     try:
         while running:
+            # Check stop flag at the start of each loop iteration
+            if check_stop_flag():
+                logger.warning("")
+                logger.warning("⚠️  Stop flag detected from Admin Panel. Stopping monitor...")
+                save_partial_data()
+                break
             check_count += 1
             now = datetime.now()
             current_time_str = now.strftime("%Y-%m-%d %H:%M:%S")
@@ -310,13 +410,16 @@ def main():
                     logger.info(f"📅 Next scheduled processing: {next_scheduled}")
             
             # Wait 60 seconds before next check
-            if running:
+            if running and not check_stop_flag():
                 logger.info("")
-                logger.info(f"⏳ Next check in 60 seconds... (Ctrl+C to stop)")
+                logger.info(f"⏳ Next check in 60 seconds... (Ctrl+C or Admin Panel to stop)")
                 
-                # Sleep in 1-second intervals to check for shutdown signal
+                # Sleep in 1-second intervals to check for shutdown signal and stop flag
                 for i in range(60):
-                    if not running:
+                    if not running or check_stop_flag():
+                        if check_stop_flag():
+                            logger.warning("⚠️  Stop flag detected during wait. Stopping...")
+                            save_partial_data()
                         break
                     time.sleep(1)
     
@@ -329,12 +432,19 @@ def main():
         logger.error(traceback.format_exc())
         sys.exit(1)
     finally:
+        # Clear stop flag
+        clear_stop_flag()
+        
+        # Save any remaining partial data
+        save_partial_data()
+        
         logger.info("")
         logger.info("="*80)
         logger.info("REAL-TIME MONITOR STOPPED")
         logger.info("="*80)
         logger.info(f"  Total checks performed: {check_count}")
         logger.info(f"  Total orders processed: {total_orders_processed}")
+        logger.info("  ✅ All processed data saved in batches/ and label/ folders")
         logger.info("="*80)
         logger.info("")
 

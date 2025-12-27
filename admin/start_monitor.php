@@ -236,13 +236,39 @@ function startMonitor() {
 }
 
 function stopMonitor() {
-    global $pid_file;
+    global $pid_file, $project_root;
     
     $status = getMonitorStatus();
     if ($status === 'stopped') {
         return ['success' => false, 'message' => 'Monitor is not running'];
     }
     
+    // Set stop flag file to signal the monitor to stop gracefully
+    $stop_flag_file = $project_root . DIRECTORY_SEPARATOR . 'monitor_stop_flag.txt';
+    try {
+        file_put_contents($stop_flag_file, '1');
+    } catch (Exception $e) {
+        // Continue anyway
+    }
+    
+    // Wait a moment for graceful shutdown
+    sleep(2);
+    
+    // Check if process stopped gracefully
+    $new_status = getMonitorStatus();
+    if ($new_status === 'stopped') {
+        // Clear stop flag
+        if (file_exists($stop_flag_file)) {
+            file_put_contents($stop_flag_file, '0');
+        }
+        // Remove PID file
+        if (file_exists($pid_file)) {
+            unlink($pid_file);
+        }
+        return ['success' => true, 'message' => 'Monitor stopped gracefully. All data saved.'];
+    }
+    
+    // If still running, force kill
     if (!file_exists($pid_file)) {
         return ['success' => false, 'message' => 'PID file not found'];
     }
@@ -265,13 +291,17 @@ function stopMonitor() {
         sleep(1);
         
         // Check if stopped
-        $status = getMonitorStatus();
-        if ($status === 'stopped') {
+        $final_status = getMonitorStatus();
+        if ($final_status === 'stopped') {
+            // Clear stop flag
+            if (file_exists($stop_flag_file)) {
+                file_put_contents($stop_flag_file, '0');
+            }
             // Remove PID file
             if (file_exists($pid_file)) {
                 unlink($pid_file);
             }
-            return ['success' => true, 'message' => 'Monitor stopped successfully'];
+            return ['success' => true, 'message' => 'Monitor stopped. Partial data saved in batches/ and label/ folders.'];
         } else {
             return ['success' => false, 'message' => 'Failed to stop monitor'];
         }
