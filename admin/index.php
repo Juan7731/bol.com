@@ -676,16 +676,16 @@ $last_updated = $configManager->getLastUpdated();
             <div class="card-header">
                 <h2>
                     <span class="icon">🚀</span>
-                    Real-Time Monitor Control
+                    Scheduled Processor Control
                 </h2>
-                <p>Start or stop the real-time order processing monitor</p>
+                <p>Start or stop the scheduled order processing monitor</p>
             </div>
             
             <div class="card-body">
                 <div class="form-section">
                     <div class="form-section-description">
-                        The real-time monitor checks for new orders every minute and processes them automatically. 
-                        It also processes at scheduled times configured above (08:00, 15:01, etc.).
+                        The scheduled processor runs ONLY at configured times (08:00, 15:01, etc.) and processes orders for BOTH accounts (Jean & Trivium) automatically. 
+                        It does NOT check every minute - only at the scheduled times.
                     </div>
                     
                     <div class="monitor-control">
@@ -709,7 +709,8 @@ $last_updated = $configManager->getLastUpdated();
                         </div>
                         
                         <div class="info-box" style="margin-top: 20px;">
-                            <strong>ℹ️ Note:</strong> The monitor runs in the background. Use this button to start it remotely. 
+                            <strong>ℹ️ Note:</strong> The monitor runs in the background and processes orders ONLY at scheduled times (08:00, 15:01, etc.). 
+                            It does NOT check every minute. Use this button to start it remotely. 
                             To stop the monitor, click "Stop Monitor" or press Ctrl+C in the terminal where it's running.
                         </div>
                     </div>
@@ -777,7 +778,7 @@ $last_updated = $configManager->getLastUpdated();
         }
         
         function startMonitor() {
-            if (!confirm('Start the real-time monitor? This will begin processing orders every minute.')) {
+            if (!confirm('Start the scheduled processor? This will process orders at configured times (08:00, 15:01, etc.).')) {
                 return;
             }
             
@@ -814,7 +815,7 @@ $last_updated = $configManager->getLastUpdated();
         }
         
         function stopMonitor() {
-            if (!confirm('Stop the real-time monitor? This will stop processing orders.')) {
+            if (!confirm('Stop the scheduled processor? This will stop processing orders at scheduled times.')) {
                 return;
             }
             

@@ -1,11 +1,10 @@
 """
-Real-Time Order Monitor - Multi-Account Processing
+Scheduled Order Processor - Multi-Account Processing
 
-This script monitors for new orders every minute and processes them automatically.
-- Checks both Jean and Trivium accounts
-- Runs every minute continuously
-- Processes orders automatically when found
-- Also processes at scheduled times from system_config.json
+This script processes orders at scheduled times from system_config.json.
+- Processes both Jean and Trivium accounts automatically
+- Runs only at configured times (e.g., 08:00, 15:01)
+- No per-minute checking - only scheduled times
 - Production mode (test_mode=False)
 """
 
@@ -281,7 +280,7 @@ def process_orders_realtime() -> Dict:
 
 
 def main():
-    """Main real-time monitoring loop"""
+    """Main scheduled processing monitor - runs only at configured times"""
     global running
     
     # Clear stop flag on startup
@@ -296,25 +295,24 @@ def main():
     scheduled_times = [normalize_time_string(t) for t in scheduled_times]
     scheduled_times = [t for t in scheduled_times if t]
     
+    if not scheduled_times:
+        logger.error("❌ No scheduled processing times configured in system_config.json")
+        logger.error("   Please configure 'processing_times' in system_config.json")
+        sys.exit(1)
+    
     logger.info("="*80)
-    logger.info("REAL-TIME ORDER MONITOR - Multi-Account Processing")
+    logger.info("SCHEDULED ORDER PROCESSOR - Multi-Account Processing")
     logger.info("="*80)
     logger.info("⚠️  Running in PRODUCTION mode")
-    logger.info("⏰  Checking for new orders every 60 seconds")
-    
-    if scheduled_times:
-        logger.info("📅 Scheduled processing times (auto-run):")
-        for i, t in enumerate(scheduled_times, 1):
-            logger.info(f"   {i}. {t}")
-        logger.info("   (Will process automatically at these times even if no new orders)")
-    else:
-        logger.info("📅 No scheduled times configured (checking every minute only)")
-    
+    logger.info("📅 Processing times (auto-run):")
+    for i, t in enumerate(scheduled_times, 1):
+        logger.info(f"   {i}. {t}")
+    logger.info("")
+    logger.info("ℹ️  The system will process BOTH accounts (Jean & Trivium) at these times")
     logger.info("⌨️  Press Ctrl+C to stop or use Admin Panel Stop button")
     logger.info("="*80)
     logger.info("")
     
-    check_count = 0
     total_orders_processed = 0
     last_scheduled_run: Dict[str, date] = {}  # time_str -> date when last run at scheduled time
     
@@ -326,77 +324,68 @@ def main():
                 logger.warning("⚠️  Stop flag detected from Admin Panel. Stopping monitor...")
                 save_partial_data()
                 break
-            check_count += 1
+            
             now = datetime.now()
             current_time_str = now.strftime("%Y-%m-%d %H:%M:%S")
             current_time_hm = now.strftime("%H:%M")
+            current_second = now.second
             today = now.date()
             
-            # Check if this is a scheduled time
+            # Check if this is a scheduled time (only check at minute 0, second 0-5 to avoid multiple triggers)
             is_scheduled_time = current_time_hm in scheduled_times
-            should_force_process = False
+            should_process = False
             
-            if is_scheduled_time:
+            if is_scheduled_time and current_second < 5:
                 # Check if we already processed at this scheduled time today
                 if last_scheduled_run.get(current_time_hm) != today:
-                    should_force_process = True
+                    should_process = True
                     last_scheduled_run[current_time_hm] = today
             
-            logger.info("")
-            logger.info("─" * 80)
-            if should_force_process:
-                logger.info(f"CHECK #{check_count} - {current_time_str} - ⏰ SCHEDULED TIME: {current_time_hm}")
-            else:
-                logger.info(f"CHECK #{check_count} - {current_time_str}")
-            logger.info("─" * 80)
-            
-            # Process orders
-            result = process_orders_realtime()
-            
-            orders_this_check = result.get('total_orders', 0)
-            accounts_processed = result.get('accounts_processed', 0)
-            total_orders_processed += orders_this_check
-            
-            # Show detailed results for each account
-            results_list = result.get('results', [])
-            if results_list:
+            if should_process:
                 logger.info("")
-                logger.info("Account Processing Results:")
-                for acc_result in results_list:
-                    acc_name = acc_result.get('account', 'Unknown')
-                    acc_processed = acc_result.get('processed', 0)
-                    acc_total = acc_result.get('total_orders', 0)
-                    acc_success = acc_result.get('success', False)
-                    
-                    if acc_success:
-                        if acc_processed > 0:
-                            logger.info(f"  ✅ {acc_name}: {acc_processed} order(s) processed (from {acc_total} total)")
+                logger.info("="*80)
+                logger.info(f"⏰ SCHEDULED PROCESSING TIME: {current_time_hm}")
+                logger.info(f"   {current_time_str}")
+                logger.info("="*80)
+                logger.info("")
+                
+                # Process orders for both accounts
+                result = process_orders_realtime()
+                
+                orders_this_check = result.get('total_orders', 0)
+                accounts_processed = result.get('accounts_processed', 0)
+                total_orders_processed += orders_this_check
+                
+                # Show detailed results for each account
+                results_list = result.get('results', [])
+                if results_list:
+                    logger.info("")
+                    logger.info("Account Processing Results:")
+                    for acc_result in results_list:
+                        acc_name = acc_result.get('account', 'Unknown')
+                        acc_processed = acc_result.get('processed', 0)
+                        acc_total = acc_result.get('total_orders', 0)
+                        acc_success = acc_result.get('success', False)
+                        
+                        if acc_success:
+                            if acc_processed > 0:
+                                logger.info(f"  ✅ {acc_name}: {acc_processed} order(s) processed (from {acc_total} total)")
+                            else:
+                                logger.info(f"  ✅ {acc_name}: No new orders (checked {acc_total} total)")
                         else:
-                            logger.info(f"  ✅ {acc_name}: No new orders (checked {acc_total} total)")
-                    else:
-                        error_msg = acc_result.get('error', 'Unknown error')
-                        logger.error(f"  ❌ {acc_name}: Failed - {error_msg}")
-            
-            # Summary for this check
-            if should_force_process:
+                            error_msg = acc_result.get('error', 'Unknown error')
+                            logger.error(f"  ❌ {acc_name}: Failed - {error_msg}")
+                
+                # Summary
+                logger.info("")
                 if orders_this_check > 0:
-                    logger.info("")
-                    logger.info(f"✅ Scheduled check #{check_count} complete: {orders_this_check} order(s) processed from {accounts_processed} account(s)")
+                    logger.info(f"✅ Scheduled processing complete: {orders_this_check} order(s) processed from {accounts_processed} account(s)")
                 else:
-                    logger.info("")
-                    logger.info(f"✅ Scheduled check #{check_count} complete: No new orders from {accounts_processed} account(s) (scheduled run completed)")
-            else:
-                if orders_this_check > 0:
-                    logger.info("")
-                    logger.info(f"✅ Check #{check_count} complete: {orders_this_check} order(s) processed from {accounts_processed} account(s)")
-                else:
-                    logger.info("")
-                    logger.info(f"ℹ️  Check #{check_count} complete: No new orders from {accounts_processed} account(s)")
-            
-            logger.info(f"📊 Total orders processed since start: {total_orders_processed}")
-            
-            # Show next scheduled time
-            if scheduled_times:
+                    logger.info(f"✅ Scheduled processing complete: No new orders from {accounts_processed} account(s)")
+                
+                logger.info(f"📊 Total orders processed since start: {total_orders_processed}")
+                
+                # Show next scheduled time
                 next_scheduled = None
                 for t in sorted(scheduled_times):
                     if t > current_time_hm:
@@ -407,21 +396,17 @@ def main():
                     next_scheduled = scheduled_times[0]
                 
                 if next_scheduled:
-                    logger.info(f"📅 Next scheduled processing: {next_scheduled}")
-            
-            # Wait 60 seconds before next check
-            if running and not check_stop_flag():
-                logger.info("")
-                logger.info(f"⏳ Next check in 60 seconds... (Ctrl+C or Admin Panel to stop)")
+                    logger.info(f"📅 Next scheduled processing: {next_scheduled} tomorrow")
                 
-                # Sleep in 1-second intervals to check for shutdown signal and stop flag
-                for i in range(60):
-                    if not running or check_stop_flag():
-                        if check_stop_flag():
-                            logger.warning("⚠️  Stop flag detected during wait. Stopping...")
-                            save_partial_data()
-                        break
-                    time.sleep(1)
+                logger.info("")
+                logger.info("="*80)
+                logger.info("Waiting for next scheduled time...")
+                logger.info("="*80)
+                logger.info("")
+            
+            # Sleep for 5 seconds and check again (only process at minute 0, second 0-5)
+            if running and not check_stop_flag():
+                time.sleep(5)
     
     except KeyboardInterrupt:
         logger.info("")
@@ -440,9 +425,8 @@ def main():
         
         logger.info("")
         logger.info("="*80)
-        logger.info("REAL-TIME MONITOR STOPPED")
+        logger.info("SCHEDULED PROCESSOR STOPPED")
         logger.info("="*80)
-        logger.info(f"  Total checks performed: {check_count}")
         logger.info(f"  Total orders processed: {total_orders_processed}")
         logger.info("  ✅ All processed data saved in batches/ and label/ folders")
         logger.info("="*80)
