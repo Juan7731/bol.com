@@ -13,8 +13,25 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-# Configuration file path
-CONFIG_FILE = "system_config.json"
+# Configuration file path - use absolute path based on script location
+def _get_config_file_path() -> str:
+    """Get absolute path to config file"""
+    # Try to find config file in current directory or script directory
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    possible_paths = [
+        os.path.join(script_dir, "system_config.json"),
+        os.path.join(os.getcwd(), "system_config.json"),
+        "system_config.json"
+    ]
+    
+    for path in possible_paths:
+        if os.path.exists(path):
+            return os.path.abspath(path)
+    
+    # Return default path if not found
+    return os.path.join(script_dir, "system_config.json")
+
+CONFIG_FILE = _get_config_file_path()
 
 
 def load_config() -> Dict:
@@ -69,20 +86,40 @@ def load_config() -> Dict:
         }
     }
     
-    if os.path.exists(CONFIG_FILE):
+    config_path = _get_config_file_path()
+    
+    if os.path.exists(config_path):
         try:
-            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+            with open(config_path, 'r', encoding='utf-8') as f:
                 config = json.load(f)
                 # Merge with defaults to ensure all keys exist
                 merged = default_config.copy()
                 merged.update(config)
+                
+                # Validate bol_accounts structure
+                if 'bol_accounts' in merged and isinstance(merged['bol_accounts'], list):
+                    logger.info(f"✅ Loaded {len(merged['bol_accounts'])} account(s) from config")
+                    active_count = sum(1 for acc in merged['bol_accounts'] if acc.get('active', False))
+                    logger.info(f"✅ {active_count} account(s) marked as active")
+                else:
+                    logger.warning("⚠️  'bol_accounts' not found or invalid in config, using defaults")
+                
                 return merged
+        except json.JSONDecodeError as e:
+            logger.error(f"❌ JSON decode error in config file {config_path}: {e}. Using defaults.")
+            return default_config
         except Exception as e:
-            logger.error(f"Error loading config file: {e}. Using defaults.")
+            logger.error(f"❌ Error loading config file {config_path}: {e}. Using defaults.")
+            import traceback
+            logger.error(traceback.format_exc())
             return default_config
     else:
+        logger.warning(f"⚠️  Config file not found at {config_path}. Creating default config.")
         # Create default config file
-        save_config(default_config)
+        try:
+            save_config(default_config)
+        except Exception as e:
+            logger.error(f"❌ Failed to create default config file: {e}")
         return default_config
 
 
@@ -97,12 +134,15 @@ def save_config(config: Dict) -> bool:
         True if successful, False otherwise
     """
     try:
-        with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+        config_path = _get_config_file_path()
+        with open(config_path, 'w', encoding='utf-8') as f:
             json.dump(config, f, indent=2, ensure_ascii=False)
-        logger.info(f"Configuration saved to {CONFIG_FILE}")
+        logger.info(f"✅ Configuration saved to {config_path}")
         return True
     except Exception as e:
-        logger.error(f"Error saving config file: {e}")
+        logger.error(f"❌ Error saving config file: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return False
 
 
@@ -281,8 +321,42 @@ def get_active_bol_accounts() -> List[Dict]:
     Returns:
         List of active account dictionaries
     """
-    config = load_config()
-    return [acc for acc in config["bol_accounts"] if acc.get("active", False)]
+    try:
+        config = load_config()
+        
+        if "bol_accounts" not in config:
+            logger.error("❌ 'bol_accounts' key not found in configuration")
+            return []
+        
+        if not isinstance(config["bol_accounts"], list):
+            logger.error(f"❌ 'bol_accounts' is not a list (type: {type(config['bol_accounts'])})")
+            return []
+        
+        active_accounts = []
+        for acc in config["bol_accounts"]:
+            if not isinstance(acc, dict):
+                logger.warning(f"⚠️  Skipping invalid account entry: {acc}")
+                continue
+            
+            if acc.get("active", False):
+                # Validate required fields
+                if "name" not in acc:
+                    logger.warning(f"⚠️  Account missing 'name' field: {acc}")
+                    continue
+                if "client_id" not in acc or "client_secret" not in acc:
+                    logger.warning(f"⚠️  Account '{acc.get('name', 'Unknown')}' missing credentials")
+                    continue
+                
+                active_accounts.append(acc)
+        
+        logger.info(f"✅ Found {len(active_accounts)} active account(s): {[acc.get('name') for acc in active_accounts]}")
+        return active_accounts
+        
+    except Exception as e:
+        logger.error(f"❌ Error getting active accounts: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return []
 
 
 def set_default_shop(shop_name: str) -> bool:

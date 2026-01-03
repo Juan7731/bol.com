@@ -17,7 +17,7 @@ from typing import Dict, List
 import signal
 import json
 
-# Setup logging
+# Setup logging FIRST before any imports that might use logger
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -27,6 +27,14 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
+# Log current working directory for debugging
+try:
+    cwd = os.getcwd()
+    logger.info(f"📁 Current working directory: {cwd}")
+    logger.info(f"📁 Script directory: {os.path.dirname(os.path.abspath(__file__))}")
+except Exception as e:
+    logger.warning(f"⚠️  Could not determine working directory: {e}")
 
 # Global flag for graceful shutdown
 running = True
