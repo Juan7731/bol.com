@@ -2,16 +2,16 @@
 
 ## 📋 Comandos Disponíveis
 
-### ⏰ MONITOR EM TEMPO REAL (Recomendado para uso diário)
-**Verifica novos pedidos a cada minuto automaticamente**
+### ⏰ PROCESSADOR AGENDADO (Recomendado para uso diário)
+**Processa pedidos apenas nos horários configurados (08:00, 15:01, etc.)**
 
 ```cmd
 run_realtime_monitor.bat
 ```
 
-✅ Processa ambas as contas (Jean e Trivium)  
-✅ Verifica novos pedidos a cada 60 segundos  
-✅ Processamento automático  
+✅ Processa ambas as contas (Jean e Trivium) automaticamente  
+✅ Executa apenas nos horários agendados (08:00, 15:01)  
+✅ Não verifica a cada minuto - apenas nos horários configurados  
 ✅ Modo PRODUÇÃO  
 ⏹️ Pressione Ctrl+C para parar  
 
@@ -47,11 +47,11 @@ deploy_to_sftp.bat
 
 ## 🎯 Qual Comando Usar?
 
-### Para uso diário/contínuo:
+### Para uso diário/agendado:
 ```cmd
 run_realtime_monitor.bat
 ```
-**Use este para monitoramento contínuo durante o dia.**
+**Use este para processamento automático nos horários configurados (08:00, 15:01, etc.).**
 
 ### Para processamento pontual:
 ```cmd
@@ -69,12 +69,12 @@ deploy_to_sftp.bat
 
 ## 📊 Comparação
 
-| Recurso | Monitor em Tempo Real | Processamento Único |
+| Recurso | Processador Agendado | Processamento Único |
 |---------|----------------------|---------------------|
-| **Execução** | Contínua (loop) | Uma vez |
-| **Frequência** | A cada 60 segundos | Manual |
+| **Execução** | Contínua (aguarda horários) | Uma vez |
+| **Frequência** | Horários configurados (08:00, 15:01) | Manual |
 | **Parar** | Ctrl+C | Automático |
-| **Uso** | Monitoramento diário | Sob demanda |
+| **Uso** | Processamento automático agendado | Sob demanda |
 | **Contas** | Jean + Trivium | Jean + Trivium |
 | **Modo** | PRODUÇÃO | PRODUÇÃO |
 

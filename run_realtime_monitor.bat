@@ -1,26 +1,27 @@
 @echo off
 REM ============================================================================
-REM Real-Time Order Monitor - Multi-Account Processing
+REM Scheduled Order Processor - Multi-Account Processing
 REM ============================================================================
-REM This script monitors for new orders every minute and processes them
+REM This script processes orders at scheduled times (08:00, 15:01, etc.)
 REM automatically for both Jean and Trivium accounts.
 REM
 REM Usage: Double-click this file or run: run_realtime_monitor.bat
-REM Press Ctrl+C to stop the monitor
+REM Press Ctrl+C to stop the processor
 REM ============================================================================
 
 echo.
 echo ============================================================================
-echo REAL-TIME ORDER MONITOR - Multi-Account Processing
+echo SCHEDULED ORDER PROCESSOR - Multi-Account Processing
 echo ============================================================================
 echo.
-echo This will monitor for new orders every minute and process them automatically.
+echo This will process orders at scheduled times (08:00, 15:01, etc.)
 echo.
 echo IMPORTANT:
 echo   - Runs in PRODUCTION mode (real orders!)
-echo   - Checks both Jean and Trivium accounts
-echo   - Runs every 60 seconds continuously
-echo   - Press Ctrl+C to stop the monitor
+echo   - Processes both Jean and Trivium accounts automatically
+echo   - Runs ONLY at scheduled times (no per-minute checking)
+echo   - Configure times in system_config.json
+echo   - Press Ctrl+C to stop the processor
 echo.
 echo Press Ctrl+C to cancel, or
 pause
@@ -44,14 +45,14 @@ echo.
 echo Starting monitor at: %date% %time%
 echo.
 
-REM Run the real-time monitor script
+REM Run the scheduled processor script
 python run_realtime_monitor.py
 
 REM Check exit code
 if errorlevel 1 (
     echo.
     echo ============================================================================
-    echo ERROR: Monitor stopped with errors
+    echo ERROR: Processor stopped with errors
     echo ============================================================================
     echo.
     pause
@@ -59,7 +60,7 @@ if errorlevel 1 (
 ) else (
     echo.
     echo ============================================================================
-    echo Monitor stopped normally
+    echo Processor stopped normally
     echo ============================================================================
     echo.
     pause

@@ -53,6 +53,9 @@ from config import (
 
 import csv
 
+# Initialize logger BEFORE using it
+logger = logging.getLogger(__name__)
+
 # Import label uploader for automatic PDF upload
 try:
     from label_uploader import upload_all_labels
@@ -65,9 +68,6 @@ import paramiko
 import smtplib
 from smtplib import SMTP_SSL
 from email.message import EmailMessage
-
-
-logger = logging.getLogger(__name__)
 
 # Label directory for storing PDF shipping labels
 LABEL_DIR = "label"

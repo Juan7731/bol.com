@@ -153,12 +153,24 @@ def process_orders_realtime() -> Dict:
             }
         
         # Get active accounts
-        active_accounts = get_active_bol_accounts()
-        config = get_config_summary()
-        default_shop = config.get('default_shop', 'Trivium')
+        try:
+            active_accounts = get_active_bol_accounts()
+            config = get_config_summary()
+            default_shop = config.get('default_shop', 'Trivium')
+        except Exception as config_error:
+            logger.error(f"❌ Failed to load configuration: {config_error}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return {
+                'accounts_processed': 0,
+                'total_orders': 0,
+                'results': [],
+                'error': f'Configuration error: {str(config_error)}'
+            }
         
         if not active_accounts:
-            logger.warning("No active Bol.com accounts found")
+            logger.warning("⚠️  No active Bol.com accounts found in system_config.json")
+            logger.warning("   Please check that accounts have 'active': true in system_config.json")
             return {
                 'accounts_processed': 0,
                 'total_orders': 0,
@@ -356,6 +368,10 @@ def main():
                 accounts_processed = result.get('accounts_processed', 0)
                 total_orders_processed += orders_this_check
                 
+                # Check for errors in result
+                if 'error' in result:
+                    logger.error(f"❌ Processing error: {result.get('error')}")
+                
                 # Show detailed results for each account
                 results_list = result.get('results', [])
                 if results_list:
@@ -375,10 +391,19 @@ def main():
                         else:
                             error_msg = acc_result.get('error', 'Unknown error')
                             logger.error(f"  ❌ {acc_name}: Failed - {error_msg}")
+                elif accounts_processed == 0:
+                    logger.warning("")
+                    logger.warning("⚠️  No accounts were processed!")
+                    logger.warning("   This may indicate:")
+                    logger.warning("   - No active accounts in system_config.json")
+                    logger.warning("   - Configuration loading error")
+                    logger.warning("   - Check system_config.json file exists and is valid JSON")
                 
                 # Summary
                 logger.info("")
-                if orders_this_check > 0:
+                if accounts_processed == 0:
+                    logger.warning(f"⚠️  Scheduled processing complete: No accounts processed (check configuration)")
+                elif orders_this_check > 0:
                     logger.info(f"✅ Scheduled processing complete: {orders_this_check} order(s) processed from {accounts_processed} account(s)")
                 else:
                     logger.info(f"✅ Scheduled processing complete: No new orders from {accounts_processed} account(s)")
