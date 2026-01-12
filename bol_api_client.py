@@ -511,24 +511,31 @@ class BolAPIClient:
         url = f"{self.API_BASE_URL}{endpoint}"
         
         # For shipping labels, use appropriate Accept header based on format
+        # The API requires specific Accept headers without wildcards
+        # For binary content (PDF/ZPL), we use the MIME type directly
         token = self._get_access_token()
         
-        # ZPL format requires text/plain accept header
+        # According to Bol.com API v10 documentation, for shipping labels:
+        # - PDF format: Accept: application/pdf
+        # - ZPL format: Accept: text/plain
+        # The API does not accept wildcards or multiple types in Accept header for binary content
         if label_format == "ZPL":
             accept_header = 'text/plain'
         elif label_format == "PDF":
             accept_header = 'application/pdf'
         else:
-            # Try to accept multiple formats
-            accept_header = 'text/plain, application/pdf, application/vnd.retailer.v10+json'
+            # Default to ZPL if format not specified
+            accept_header = 'text/plain'
         
         headers = {
             'Authorization': f'{self.token_type} {token}',
             'Accept': accept_header
         }
         
-        # Add format parameter
+        # Note: According to Bol.com API, the format is specified via Accept header, not query parameter
+        # Some endpoints may accept format parameter, but shipping labels use Accept header
         params = {}
+        # Try with format parameter as fallback (some API versions may require it)
         if label_format:
             params['format'] = label_format
         
@@ -608,7 +615,7 @@ class BolAPIClient:
                 elif label_format == "PDF":
                     accept_header = 'application/pdf'
                 else:
-                    accept_header = 'text/plain, application/pdf, application/vnd.retailer.v10+json'
+                    accept_header = 'text/plain'
                 
                 headers = {
                     'Authorization': f'{self.token_type} {token}',

@@ -1,16 +1,8 @@
 {
   "processing_times": [
-    "02:00",
-    "04:00",
-    "06:00",
-    "08:00",
+    "06:01",
     "15:01",
-    "16:01",
-    "17:01",
-    "18:01",
-    "20:01",
-    "23:01",
-    "23:01"
+    "17:00"
   ],
   "email": {
     "enabled": true,
@@ -32,8 +24,9 @@
     "host": "triviu.ssh.transip.me",
     "port": 22,
     "username": "trivium-ecommercecom",
-    "password": "&9z?8zcN&9z?8zcN",
+    "password": "t99tmJ!Z8a/J",
     "remote_batch_dir": "/data/sites/web/trivium-ecommercecom/FTP/Batches",
+    "remote_label_dir": "/data/sites/web/trivium-ecommercecom/FTP/Label",
     "remote_callback_dir": "/data/sites/web/trivium-ecommercecom/FTP/Callbacks"
   },
   "bol_accounts": [

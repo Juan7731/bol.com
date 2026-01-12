@@ -122,19 +122,44 @@ def process_account(account_name: str, client_id: str, client_secret: str,
         
         # Upload CSV files
         if files_created:
-            try:
-                upload_files_sftp(files_created)
-            except Exception as upload_error:
-                logger.error(f"Failed to upload CSV files for {account_name}: {upload_error}")
-                # Continue anyway - files are created locally
+            # Verify files exist before attempting upload
+            import os
+            existing_files = []
+            for file_path in files_created:
+                if os.path.exists(file_path):
+                    existing_files.append(file_path)
+                    logger.debug(f"✅ Arquivo encontrado: {file_path}")
+                else:
+                    logger.warning(f"⚠️  Arquivo não encontrado (será pulado): {file_path}")
             
-            # Upload label PDFs
-            if LABEL_UPLOADER_AVAILABLE:
+            if existing_files:
+                logger.info(f"📤 Preparando upload de {len(existing_files)} arquivo(s) CSV para {account_name}...")
                 try:
-                    upload_all_labels()
-                except Exception as label_error:
-                    logger.error(f"Failed to upload label PDFs for {account_name}: {label_error}")
-                    # Continue anyway - labels are saved locally
+                    upload_files_sftp(existing_files)
+                    logger.info(f"✅ Upload de arquivos CSV concluído para {account_name}")
+                except Exception as upload_error:
+                    logger.error(f"❌ Falha no upload de arquivos CSV para {account_name}: {upload_error}")
+                    import traceback
+                    logger.error(f"   Traceback completo: {traceback.format_exc()}")
+                    # Continue anyway - files are created locally
+            else:
+                logger.warning(f"⚠️  Nenhum arquivo CSV válido encontrado para upload para {account_name}")
+        else:
+            logger.info(f"ℹ️  Nenhum arquivo CSV gerado para {account_name} (nenhum pedido para processar)")
+        
+        # Upload label PDFs
+        if LABEL_UPLOADER_AVAILABLE:
+            try:
+                logger.info(f"📤 Preparando upload de labels PDF para {account_name}...")
+                upload_all_labels()
+                logger.info(f"✅ Upload de labels PDF concluído para {account_name}")
+            except Exception as label_error:
+                logger.error(f"❌ Falha no upload de labels PDF para {account_name}: {label_error}")
+                import traceback
+                logger.error(f"   Traceback completo: {traceback.format_exc()}")
+                # Continue anyway - labels are saved locally
+        else:
+            logger.warning(f"⚠️  Label uploader não disponível - PDFs permanecem na pasta local 'label/'")
         
         # Send email summary (non-critical, don't fail if this errors)
         try:

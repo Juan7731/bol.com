@@ -14,6 +14,7 @@ from config import (
     SFTP_PORT,
     SFTP_USERNAME,
     SFTP_PASSWORD,
+    SFTP_REMOTE_LABEL_DIR,
 )
 
 # Configure logging
@@ -25,28 +26,32 @@ logger = logging.getLogger(__name__)
 
 # Directory settings
 LOCAL_LABEL_DIR = "label"
-SFTP_REMOTE_LABEL_DIR = "/data/sites/web/trivium-ecommercecom/FTP/Label"
+# SFTP_REMOTE_LABEL_DIR will be loaded from config or system_config.json
 
 
-def ensure_remote_label_directory(sftp: paramiko.SFTPClient) -> bool:
+def ensure_remote_label_directory(sftp: paramiko.SFTPClient, remote_dir: str = None) -> bool:
     """
     Ensure the remote label directory exists, create if it doesn't.
     
     Args:
         sftp: Active SFTP client connection
+        remote_dir: Remote directory path (defaults to SFTP_REMOTE_LABEL_DIR)
         
     Returns:
         bool: True if directory exists or was created successfully
     """
+    if remote_dir is None:
+        remote_dir = SFTP_REMOTE_LABEL_DIR
+    
     try:
-        sftp.chdir(SFTP_REMOTE_LABEL_DIR)
-        logger.info(f"Remote label directory exists: {SFTP_REMOTE_LABEL_DIR}")
+        sftp.chdir(remote_dir)
+        logger.debug(f"Remote label directory exists: {remote_dir}")
         return True
     except IOError:
         # Directory doesn't exist, create it
-        logger.info(f"Creating remote label directory: {SFTP_REMOTE_LABEL_DIR}")
+        logger.info(f"Creating remote label directory: {remote_dir}")
         try:
-            parts = SFTP_REMOTE_LABEL_DIR.strip("/").split("/")
+            parts = [p for p in remote_dir.strip("/").split("/") if p]
             current = "/"
             for part in parts:
                 current = os.path.join(current, part).replace("\\", "/")
@@ -55,7 +60,7 @@ def ensure_remote_label_directory(sftp: paramiko.SFTPClient) -> bool:
                 except IOError:
                     sftp.mkdir(current)
                     sftp.chdir(current)
-            logger.info(f"✅ Created remote label directory: {SFTP_REMOTE_LABEL_DIR}")
+            logger.info(f"✅ Created remote label directory: {remote_dir}")
             return True
         except Exception as e:
             logger.error(f"❌ Failed to create remote label directory: {e}")
@@ -73,55 +78,91 @@ def upload_label_pdf_to_ftp(local_file_path: str) -> bool:
         bool: True if upload was successful, False otherwise
     """
     if not os.path.exists(local_file_path):
-        logger.error(f"❌ File not found: {local_file_path}")
+        logger.error(f"❌ Arquivo não encontrado: {local_file_path}")
         return False
     
     if not local_file_path.lower().endswith('.pdf'):
-        logger.warning(f"⚠️  Skipping non-PDF file: {local_file_path}")
+        logger.warning(f"⚠️  Pulando arquivo não-PDF: {local_file_path}")
         return False
     
+    # Try to get SFTP credentials from system_config.json first, fallback to config.py
+    sftp_host = SFTP_HOST
+    sftp_port = SFTP_PORT
+    sftp_username = SFTP_USERNAME
+    sftp_password = SFTP_PASSWORD
+    sftp_remote_label_dir = SFTP_REMOTE_LABEL_DIR
+    
+    try:
+        from config_manager import load_config
+        config = load_config()
+        if 'ftp' in config:
+            ftp_config = config['ftp']
+            sftp_host = ftp_config.get('host', SFTP_HOST)
+            sftp_port = ftp_config.get('port', SFTP_PORT)
+            sftp_username = ftp_config.get('username', SFTP_USERNAME)
+            sftp_password = ftp_config.get('password', SFTP_PASSWORD)
+            sftp_remote_label_dir = ftp_config.get('remote_label_dir', SFTP_REMOTE_LABEL_DIR)
+            logger.debug("✅ Usando credenciais SFTP do system_config.json")
+    except Exception as config_error:
+        logger.debug(f"Não foi possível carregar credenciais do system_config.json: {config_error}")
+    
     filename = os.path.basename(local_file_path)
-    remote_path = os.path.join(SFTP_REMOTE_LABEL_DIR, filename).replace("\\", "/")
+    remote_path = os.path.join(sftp_remote_label_dir, filename).replace("\\", "/")
     
     transport = None
     try:
         # Connect to SFTP
-        transport = paramiko.Transport((SFTP_HOST, SFTP_PORT))
+        transport = paramiko.Transport((sftp_host, sftp_port))
         transport.banner_timeout = 30  # Increase banner timeout
         transport.auth_timeout = 30    # Increase auth timeout
-        transport.connect(username=SFTP_USERNAME, password=SFTP_PASSWORD)
+        logger.debug(f"🔐 Tentando autenticação SFTP para {filename}...")
+        transport.connect(username=sftp_username, password=sftp_password)
         sftp = paramiko.SFTPClient.from_transport(transport)
         
         # Ensure remote directory exists
-        if not ensure_remote_label_directory(sftp):
+        if not ensure_remote_label_directory(sftp, sftp_remote_label_dir):
+            logger.error(f"❌ Não foi possível acessar/criar diretório remoto: {sftp_remote_label_dir}")
             return False
         
         # Upload the file
-        logger.info(f"📤 Uploading {filename} to {remote_path}")
+        local_size = os.path.getsize(local_file_path)
+        logger.info(f"📤 Enviando {filename} ({local_size} bytes) para {remote_path}")
         sftp.put(local_file_path, remote_path)
         
         # Verify upload
         try:
             remote_stat = sftp.stat(remote_path)
-            local_size = os.path.getsize(local_file_path)
             remote_size = remote_stat.st_size
             
             if local_size == remote_size:
-                logger.info(f"✅ Successfully uploaded {filename} ({local_size} bytes)")
+                logger.info(f"✅ Upload bem-sucedido: {filename} ({local_size} bytes)")
                 return True
             else:
-                logger.error(f"❌ Size mismatch for {filename}: local={local_size}, remote={remote_size}")
+                logger.error(f"❌ Tamanho diferente após upload: {filename} (local={local_size}, remoto={remote_size})")
                 return False
         except Exception as e:
-            logger.warning(f"⚠️  Could not verify upload for {filename}: {e}")
+            logger.warning(f"⚠️  Não foi possível verificar upload de {filename}: {e}")
+            logger.warning("   Assumindo que o upload foi bem-sucedido")
             return True  # Assume success if we can't verify
             
+    except paramiko.AuthenticationException as auth_error:
+        logger.error(f"❌ Erro de autenticação SFTP ao enviar {filename}: {auth_error}")
+        return False
+    except paramiko.SSHException as ssh_error:
+        logger.error(f"❌ Erro de conexão SSH/SFTP ao enviar {filename}: {ssh_error}")
+        return False
     except Exception as e:
-        logger.error(f"❌ Error uploading {filename} to FTP: {e}")
+        logger.error(f"❌ Erro ao enviar {filename} para FTP: {e}")
+        logger.error(f"   Tipo de erro: {type(e).__name__}")
+        import traceback
+        logger.debug(f"Traceback completo: {traceback.format_exc()}")
         return False
     finally:
         if transport:
-            transport.close()
+            try:
+                transport.close()
+            except:
+                pass
 
 
 def get_existing_pdf_files(directory: str) -> Set[str]:
@@ -216,17 +257,38 @@ def upload_all_labels():
     Upload all existing PDF files in the label folder to FTP.
     Useful for batch uploads or manual sync.
     """
+    # Get SFTP credentials
+    sftp_host = SFTP_HOST
+    sftp_port = SFTP_PORT
+    sftp_remote_label_dir = SFTP_REMOTE_LABEL_DIR
+    
+    try:
+        from config_manager import load_config
+        config = load_config()
+        if 'ftp' in config:
+            ftp_config = config['ftp']
+            sftp_host = ftp_config.get('host', SFTP_HOST)
+            sftp_port = ftp_config.get('port', SFTP_PORT)
+            sftp_remote_label_dir = ftp_config.get('remote_label_dir', SFTP_REMOTE_LABEL_DIR)
+    except Exception:
+        pass
+    
     logger.info("="*80)
-    logger.info("📤 Uploading All Label PDFs")
+    logger.info("📤 Upload de Todos os Labels PDF")
+    logger.info("="*80)
+    logger.info(f"Servidor: {sftp_host}:{sftp_port}")
+    logger.info(f"Diretório remoto: {sftp_remote_label_dir}")
+    logger.info(f"Diretório local: {LOCAL_LABEL_DIR}")
     logger.info("="*80)
     
     pdf_files = get_existing_pdf_files(LOCAL_LABEL_DIR)
     
     if not pdf_files:
-        logger.info("No PDF files found in label folder")
+        logger.info("⚠️  Nenhum arquivo PDF encontrado na pasta label")
         return
     
-    logger.info(f"Found {len(pdf_files)} PDF file(s) to upload")
+    logger.info(f"📋 Encontrados {len(pdf_files)} arquivo(s) PDF para upload")
+    logger.info("")
     
     success_count = 0
     fail_count = 0
@@ -238,9 +300,13 @@ def upload_all_labels():
         else:
             fail_count += 1
     
+    logger.info("")
     logger.info("="*80)
-    logger.info(f"✅ Upload complete: {success_count} successful, {fail_count} failed")
+    logger.info(f"📊 Upload concluído: {success_count} bem-sucedidos, {fail_count} falhas")
     logger.info("="*80)
+    
+    if fail_count > 0:
+        logger.warning("⚠️  Alguns arquivos falharam no upload. Verifique os logs acima.")
 
 
 if __name__ == "__main__":

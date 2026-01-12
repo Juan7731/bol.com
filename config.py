@@ -17,12 +17,19 @@ MAX_RETRIES = 3   # Maximum number of retry attempts
 
 # Processing times (up to four per day, HH:MM 24h format)
 # Defaults: 08:00 and 15:01
+# NOTE: Not used in continuous mode - use PROCESS_INTERVAL instead
 PROCESS_TIMES = [
-    "08:00",
+    "06:01",
     "15:01",
+    "17:00"
     "",      # optional slot 3
     "",      # optional slot 4
 ]
+
+# Continuous processing interval (in seconds)
+# Process runs continuously, checking for new orders every PROCESS_INTERVAL seconds
+# Default: 300 seconds (5 minutes)
+PROCESS_INTERVAL = 300  # 5 minutes
 
 # Local directory where CSV batches are stored
 LOCAL_BATCH_DIR = "batches"
@@ -34,7 +41,7 @@ LOCAL_LABEL_DIR = "label"
 SFTP_HOST = "triviu.ssh.transip.me"
 SFTP_PORT = 22
 SFTP_USERNAME = "trivium-ecommercecom"
-SFTP_PASSWORD = "&9z?8zcN&9z?8zcN"
+SFTP_PASSWORD = "t99tmJ!Z8a/J"
 SFTP_REMOTE_BATCH_DIR = "/data/sites/web/trivium-ecommercecom/FTP/Batches"
 SFTP_REMOTE_LABEL_DIR = "/data/sites/web/trivium-ecommercecom/FTP/Label"
 
