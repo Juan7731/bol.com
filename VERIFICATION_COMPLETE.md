@@ -195,3 +195,4 @@ O sistema irá:
 3. **Fazer upload automático para SFTP**
 4. Continuar rodando 24/7
 
+

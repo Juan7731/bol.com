@@ -227,3 +227,4 @@ O sistema irá:
 - ✅ Arquivos são enviados imediatamente após geração
 - ✅ Logs detalhados para monitoramento
 
+

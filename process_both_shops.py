@@ -12,7 +12,7 @@ from order_processing import (
     upload_files_sftp,
 )
 from order_database import init_database, get_unprocessed_orders
-from label_uploader import upload_all_labels
+from label_uploader import upload_labels_for_csv_files, upload_all_labels
 
 # Configure logging
 logging.basicConfig(
@@ -115,10 +115,10 @@ def process_shop(shop_name: str, client_id: str, client_secret: str, test_mode: 
                 upload_files_sftp(files_created)
                 logger.info(f"✅ CSV files uploaded to SFTP /Batches/ for {shop_name}")
                 
-                # Upload label PDFs
+                # Upload label PDFs (only for orders processed in this batch)
                 try:
-                    logger.info(f"Uploading label PDFs for {shop_name}...")
-                    upload_all_labels()
+                    logger.info(f"Uploading label PDFs for {shop_name} (only for processed orders)...")
+                    upload_labels_for_csv_files(files_created)
                     logger.info(f"✅ Label PDFs uploaded to SFTP /label/ for {shop_name}")
                 except Exception as label_error:
                     logger.error(f"❌ Failed to upload label PDFs for {shop_name}: {label_error}")

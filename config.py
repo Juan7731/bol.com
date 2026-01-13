@@ -20,8 +20,7 @@ MAX_RETRIES = 3   # Maximum number of retry attempts
 # NOTE: Not used in continuous mode - use PROCESS_INTERVAL instead
 PROCESS_TIMES = [
     "06:01",
-    "15:01",
-    "17:00"
+    "15:01"
     "",      # optional slot 3
     "",      # optional slot 4
 ]

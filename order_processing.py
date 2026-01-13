@@ -59,7 +59,7 @@ logger = logging.getLogger(__name__)
 
 # Import label uploader for automatic PDF upload
 try:
-    from label_uploader import upload_all_labels
+    from label_uploader import upload_labels_for_csv_files, upload_all_labels
     LABEL_UPLOADER_AVAILABLE = True
 except ImportError:
     logger.warning("label_uploader module not found - label PDFs will not be uploaded automatically")
@@ -1083,11 +1083,11 @@ def run_processing_once() -> None:
         # Upload CSV files to SFTP
         upload_files_sftp(files_created)
         
-        # Upload label PDFs to SFTP
+        # Upload label PDFs to SFTP (only for orders processed in this batch)
         if LABEL_UPLOADER_AVAILABLE:
             try:
-                logger.info("📤 Uploading label PDFs to SFTP...")
-                upload_all_labels()
+                logger.info("📤 Uploading label PDFs to SFTP (only for processed orders)...")
+                upload_labels_for_csv_files(files_created)
                 logger.info("✅ Label PDF upload completed")
             except Exception as label_error:
                 logger.error(f"❌ Failed to upload label PDFs: {label_error}")

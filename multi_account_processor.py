@@ -20,7 +20,7 @@ from order_processing import (
 
 # Import label uploader for automatic PDF upload
 try:
-    from label_uploader import upload_all_labels
+    from label_uploader import upload_labels_for_csv_files, upload_all_labels
     LABEL_UPLOADER_AVAILABLE = True
 except ImportError:
     LABEL_UPLOADER_AVAILABLE = False
@@ -147,17 +147,19 @@ def process_account(account_name: str, client_id: str, client_secret: str,
         else:
             logger.info(f"ℹ️  Nenhum arquivo CSV gerado para {account_name} (nenhum pedido para processar)")
         
-        # Upload label PDFs
-        if LABEL_UPLOADER_AVAILABLE:
+        # Upload label PDFs (only for orders processed in this batch)
+        if LABEL_UPLOADER_AVAILABLE and files_created:
             try:
-                logger.info(f"📤 Preparando upload de labels PDF para {account_name}...")
-                upload_all_labels()
+                logger.info(f"📤 Preparando upload de labels PDF para {account_name} (apenas dos pedidos processados)...")
+                upload_labels_for_csv_files(files_created)
                 logger.info(f"✅ Upload de labels PDF concluído para {account_name}")
             except Exception as label_error:
                 logger.error(f"❌ Falha no upload de labels PDF para {account_name}: {label_error}")
                 import traceback
                 logger.error(f"   Traceback completo: {traceback.format_exc()}")
                 # Continue anyway - labels are saved locally
+        elif not files_created:
+            logger.info(f"ℹ️  Nenhum arquivo CSV gerado - pulando upload de labels PDF para {account_name}")
         else:
             logger.warning(f"⚠️  Label uploader não disponível - PDFs permanecem na pasta local 'label/'")
         
@@ -220,10 +222,16 @@ def process_all_accounts() -> Dict:
     results = []
     total_orders_all = 0
     
-    for account in active_accounts:
+    logger.info(f"📋 Encontradas {len(active_accounts)} conta(s) ativa(s) para processar")
+    for idx, account in enumerate(active_accounts, 1):
         account_name = account['name']
         client_id = account['client_id']
         client_secret = account['client_secret']
+        
+        logger.info("")
+        logger.info("━" * 80)
+        logger.info(f"Processando Conta {idx}/{len(active_accounts)}: {account_name} (Shop: {account_name})")
+        logger.info("━" * 80)
         
         # Use account name as shop name, or default
         shop_name = account_name if account_name in ['Trivium', 'Jean'] else default_shop
@@ -241,6 +249,16 @@ def process_all_accounts() -> Dict:
         
         results.append(result)
         total_orders_all += result.get('processed', 0)
+        
+        # Log result for this account
+        if result.get('success', False):
+            if result.get('processed', 0) > 0:
+                logger.info(f"✅ Conta {account_name}: {result.get('processed', 0)} pedido(s) processado(s) (de {result.get('total_orders', 0)} total)")
+            else:
+                logger.info(f"✅ Conta {account_name}: Nenhum pedido novo (verificados {result.get('total_orders', 0)} pedido(s) abertos)")
+        else:
+            error_msg = result.get('error', 'Unknown error')
+            logger.error(f"❌ Conta {account_name}: Erro no processamento - {error_msg}")
     
     logger.info("="*80)
     logger.info(f"Multi-account processing complete:")

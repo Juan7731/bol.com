@@ -8,7 +8,7 @@ import time
 import logging
 import paramiko
 from pathlib import Path
-from typing import Set
+from typing import Set, List
 from config import (
     SFTP_HOST,
     SFTP_PORT,
@@ -250,6 +250,218 @@ def monitor_label_folder(check_interval: int = 5, upload_existing: bool = False)
         logger.info("\n\n" + "="*80)
         logger.info("🛑 Monitor stopped by user")
         logger.info("="*80)
+
+
+def extract_label_ids_from_csv(csv_file_path: str) -> List[str]:
+    """
+    Extract shipping label IDs from a CSV file.
+    
+    Args:
+        csv_file_path: Path to the CSV file
+        
+    Returns:
+        List of shipping label IDs (without .pdf extension)
+    """
+    import csv
+    label_ids = []
+    
+    try:
+        with open(csv_file_path, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                shipping_label = row.get('Shipping Label', '').strip()
+                if shipping_label:
+                    # Remove .pdf extension if present
+                    if shipping_label.endswith('.pdf'):
+                        shipping_label = shipping_label[:-4]
+                    label_ids.append(shipping_label)
+    except Exception as e:
+        logger.error(f"❌ Erro ao ler CSV {csv_file_path}: {e}")
+    
+    return label_ids
+
+
+def upload_labels_for_csv_files(csv_file_paths: List[str]) -> None:
+    """
+    Upload only the PDF labels that correspond to orders in the given CSV files.
+    This ensures that only labels for processed orders are uploaded.
+    
+    Args:
+        csv_file_paths: List of paths to CSV files that were just generated
+    """
+    if not csv_file_paths:
+        logger.info("ℹ️  Nenhum arquivo CSV fornecido - pulando upload de labels")
+        return
+    
+    # Extract all label IDs from CSV files
+    all_label_ids = set()
+    for csv_path in csv_file_paths:
+        if os.path.exists(csv_path):
+            label_ids = extract_label_ids_from_csv(csv_path)
+            all_label_ids.update(label_ids)
+            logger.debug(f"📋 Extraídos {len(label_ids)} label ID(s) de {os.path.basename(csv_path)}")
+        else:
+            logger.warning(f"⚠️  Arquivo CSV não encontrado: {csv_path}")
+    
+    if not all_label_ids:
+        logger.info("ℹ️  Nenhum Shipping Label encontrado nos arquivos CSV - pulando upload de labels")
+        return
+    
+    logger.info(f"📋 Total de {len(all_label_ids)} label ID(s) único(s) encontrado(s) nos CSVs")
+    
+    # Get SFTP credentials
+    sftp_host = SFTP_HOST
+    sftp_port = SFTP_PORT
+    sftp_remote_label_dir = SFTP_REMOTE_LABEL_DIR
+    
+    try:
+        from config_manager import load_config
+        config = load_config()
+        if 'ftp' in config:
+            ftp_config = config['ftp']
+            sftp_host = ftp_config.get('host', SFTP_HOST)
+            sftp_port = ftp_config.get('port', SFTP_PORT)
+            sftp_remote_label_dir = ftp_config.get('remote_label_dir', SFTP_REMOTE_LABEL_DIR)
+    except Exception:
+        pass
+    
+    logger.info("="*80)
+    logger.info("📤 Upload de Labels PDF (apenas dos pedidos processados)")
+    logger.info("="*80)
+    logger.info(f"Servidor: {sftp_host}:{sftp_port}")
+    logger.info(f"Diretório remoto: {sftp_remote_label_dir}")
+    logger.info(f"Diretório local: {LOCAL_LABEL_DIR}")
+    logger.info(f"Labels a processar: {len(all_label_ids)}")
+    logger.info("="*80)
+    
+    success_count = 0
+    fail_count = 0
+    not_found_count = 0
+    
+    # Connect to SFTP once for all uploads
+    transport = None
+    sftp = None
+    try:
+        transport = paramiko.Transport((sftp_host, sftp_port))
+        transport.banner_timeout = 30
+        transport.auth_timeout = 30
+        
+        try:
+            from config_manager import load_config
+            config = load_config()
+            if 'ftp' in config:
+                ftp_config = config['ftp']
+                sftp_username = ftp_config.get('username', SFTP_USERNAME)
+                sftp_password = ftp_config.get('password', SFTP_PASSWORD)
+            else:
+                sftp_username = SFTP_USERNAME
+                sftp_password = SFTP_PASSWORD
+        except Exception:
+            sftp_username = SFTP_USERNAME
+            sftp_password = SFTP_PASSWORD
+        
+        logger.debug(f"🔐 Conectando ao SFTP para verificar labels existentes...")
+        transport.connect(username=sftp_username, password=sftp_password)
+        sftp = paramiko.SFTPClient.from_transport(transport)
+        
+        # Ensure remote directory exists
+        if not ensure_remote_label_directory(sftp, sftp_remote_label_dir):
+            logger.error(f"❌ Não foi possível acessar/criar diretório remoto: {sftp_remote_label_dir}")
+            return
+        
+        # Get list of existing files on server
+        try:
+            existing_remote_files = set()
+            try:
+                remote_files = sftp.listdir(sftp_remote_label_dir)
+                for f in remote_files:
+                    if f.endswith('.pdf'):
+                        existing_remote_files.add(f.lower())
+                logger.debug(f"📋 Encontrados {len(existing_remote_files)} arquivo(s) PDF existente(s) no servidor")
+            except Exception as list_error:
+                logger.warning(f"⚠️  Não foi possível listar arquivos remotos: {list_error}")
+                existing_remote_files = set()
+        except Exception as e:
+            logger.warning(f"⚠️  Erro ao verificar arquivos remotos: {e}")
+            existing_remote_files = set()
+        
+        # Upload only labels that don't exist on server
+        for label_id in all_label_ids:
+            # Construct PDF filename
+            pdf_filename = f"{label_id}.pdf"
+            local_path = os.path.join(LOCAL_LABEL_DIR, pdf_filename)
+            
+            if not os.path.exists(local_path):
+                logger.warning(f"⚠️  PDF não encontrado localmente: {pdf_filename} (será pulado)")
+                not_found_count += 1
+                continue
+            
+            # Check if file already exists on server
+            if pdf_filename.lower() in existing_remote_files:
+                logger.info(f"⏭️  Label já existe no servidor: {pdf_filename} (pulando)")
+                success_count += 1  # Count as success since it's already there
+                continue
+            
+            # Upload the file
+            remote_path = os.path.join(sftp_remote_label_dir, pdf_filename).replace("\\", "/")
+            local_size = os.path.getsize(local_path)
+            logger.info(f"📤 Enviando {pdf_filename} ({local_size} bytes) para {remote_path}")
+            
+            try:
+                sftp.put(local_path, remote_path)
+                
+                # Verify upload
+                try:
+                    remote_stat = sftp.stat(remote_path)
+                    remote_size = remote_stat.st_size
+                    
+                    if local_size == remote_size:
+                        logger.info(f"✅ Upload bem-sucedido: {pdf_filename} ({local_size} bytes)")
+                        success_count += 1
+                    else:
+                        logger.error(f"❌ Tamanho diferente após upload: {pdf_filename} (local={local_size}, remoto={remote_size})")
+                        fail_count += 1
+                except Exception as e:
+                    logger.warning(f"⚠️  Não foi possível verificar upload de {pdf_filename}: {e}")
+                    logger.warning("   Assumindo que o upload foi bem-sucedido")
+                    success_count += 1
+            except Exception as upload_error:
+                logger.error(f"❌ Falha no upload: {pdf_filename} - {upload_error}")
+                fail_count += 1
+        
+    except paramiko.AuthenticationException as auth_error:
+        logger.error(f"❌ Erro de autenticação SFTP: {auth_error}")
+        return
+    except paramiko.SSHException as ssh_error:
+        logger.error(f"❌ Erro de conexão SSH/SFTP: {ssh_error}")
+        return
+    except Exception as e:
+        logger.error(f"❌ Erro ao conectar ao SFTP: {e}")
+        import traceback
+        logger.error(f"   Traceback: {traceback.format_exc()}")
+        return
+    finally:
+        if sftp:
+            try:
+                sftp.close()
+            except:
+                pass
+        if transport:
+            try:
+                transport.close()
+            except:
+                pass
+    
+    logger.info("")
+    logger.info("="*80)
+    logger.info(f"📊 Upload concluído: {success_count} bem-sucedidos, {fail_count} falhas, {not_found_count} não encontrados")
+    logger.info(f"   Total de labels nos CSVs: {len(all_label_ids)}")
+    logger.info("="*80)
+    
+    if fail_count > 0:
+        logger.warning("⚠️  Alguns arquivos falharam no upload. Verifique os logs acima.")
+    if not_found_count > 0:
+        logger.warning(f"⚠️  {not_found_count} PDF(s) não encontrado(s) localmente (podem ter sido processados anteriormente)")
 
 
 def upload_all_labels():
