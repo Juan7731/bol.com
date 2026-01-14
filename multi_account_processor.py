@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 
 def process_account(account_name: str, client_id: str, client_secret: str, 
-                    shop_name: str, test_mode: bool = True) -> Dict:
+                    shop_name: str, test_mode: bool = False) -> Dict:
     """
     Process orders for a single Bol.com account.
     
@@ -230,6 +230,12 @@ def process_all_accounts() -> Dict:
         
         # Get test_mode from config, default to False (production)
         test_mode = config.get('test_mode', False)
+        
+        # Log mode for clarity
+        if test_mode:
+            logger.warning(f"⚠️  ATENÇÃO: Modo TESTE ativado para {account_name} - Labels de TESTE serão criados")
+        else:
+            logger.info(f"✅ Modo PRODUÇÃO para {account_name} - Labels de PRODUÇÃO serão criados")
         
         result = process_account(
             account_name=account_name,

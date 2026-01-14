@@ -27,18 +27,24 @@ class BolAPIClient:
     OAUTH_TOKEN_URL = "https://login.bol.com/token"
     API_BASE_URL = "https://api.bol.com/retailer"
     
-    def __init__(self, client_id: str, client_secret: str, test_mode: bool = True):
+    def __init__(self, client_id: str, client_secret: str, test_mode: bool = False):
         """
         Initialize the Bol.com API client
         
         Args:
             client_id: Bol.com client ID
             client_secret: Bol.com client secret
-            test_mode: If True, uses test environment (default: True)
+            test_mode: If True, uses test environment (default: False for production)
         """
         self.client_id = client_id
         self.client_secret = client_secret
         self.test_mode = test_mode
+        
+        # Log mode for clarity
+        if test_mode:
+            logger.warning("⚠️  BolAPIClient inicializado em MODO TESTE - Labels de teste serão criados")
+        else:
+            logger.info("✅ BolAPIClient inicializado em MODO PRODUÇÃO - Labels de produção serão criados")
         
         # Token management
         self.access_token: Optional[str] = None
