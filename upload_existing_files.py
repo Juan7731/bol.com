@@ -5,7 +5,7 @@ Script para fazer upload manual de arquivos CSV e labels PDF existentes para o s
 import os
 import logging
 from pathlib import Path
-from order_processing import upload_files_sftp, _today_batch_dir
+from order_processing import upload_files_sftp, _batch_dir
 from label_uploader import upload_all_labels
 
 # Configurar logging
@@ -22,19 +22,18 @@ def upload_existing_batch_files():
     logger.info("📤 Upload de Arquivos CSV Existentes")
     logger.info("="*80)
     
-    # Encontrar todos os arquivos CSV na pasta batches
-    batch_dir = _today_batch_dir()
+    # Encontrar todos os arquivos CSV na pasta batches (sem subpastas)
+    batch_dir = _batch_dir()
     if not os.path.exists(batch_dir):
         logger.error(f"❌ Diretório de batches não encontrado: {batch_dir}")
         return
     
     csv_files = []
-    for root, dirs, files in os.walk(batch_dir):
-        for file in files:
-            if file.endswith('.csv'):
-                full_path = os.path.join(root, file)
-                csv_files.append(full_path)
-                logger.info(f"Encontrado: {file}")
+    for file in os.listdir(batch_dir):
+        if file.endswith('.csv'):
+            full_path = os.path.join(batch_dir, file)
+            csv_files.append(full_path)
+            logger.info(f"Encontrado: {file}")
     
     if not csv_files:
         logger.warning("⚠️  Nenhum arquivo CSV encontrado na pasta batches")

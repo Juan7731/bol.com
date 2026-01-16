@@ -20,7 +20,8 @@ from order_processing import (
 
 # Import label uploader for automatic PDF upload
 try:
-    from label_uploader import upload_all_labels
+    # upload_labels_for_csv_files: envia apenas os PDFs referentes aos pedidos presentes nos CSVs gerados
+    from label_uploader import upload_labels_for_csv_files
     LABEL_UPLOADER_AVAILABLE = True
 except ImportError:
     LABEL_UPLOADER_AVAILABLE = False
@@ -147,17 +148,19 @@ def process_account(account_name: str, client_id: str, client_secret: str,
         else:
             logger.info(f"ℹ️  Nenhum arquivo CSV gerado para {account_name} (nenhum pedido para processar)")
         
-        # Upload label PDFs
-        if LABEL_UPLOADER_AVAILABLE:
+        # Upload label PDFs (apenas dos pedidos processados neste batch)
+        if LABEL_UPLOADER_AVAILABLE and files_created:
             try:
-                logger.info(f"📤 Preparando upload de labels PDF para {account_name}...")
-                upload_all_labels()
+                logger.info(f"📤 Preparando upload de labels PDF para {account_name} (apenas dos pedidos processados)...")
+                upload_labels_for_csv_files(files_created)
                 logger.info(f"✅ Upload de labels PDF concluído para {account_name}")
             except Exception as label_error:
                 logger.error(f"❌ Falha no upload de labels PDF para {account_name}: {label_error}")
                 import traceback
                 logger.error(f"   Traceback completo: {traceback.format_exc()}")
                 # Continue anyway - labels are saved locally
+        elif not files_created:
+            logger.info(f"ℹ️  Nenhum arquivo CSV gerado - pulando upload de labels PDF para {account_name}")
         else:
             logger.warning(f"⚠️  Label uploader não disponível - PDFs permanecem na pasta local 'label/'")
         
@@ -228,21 +231,19 @@ def process_all_accounts() -> Dict:
         # Use account name as shop name, or default
         shop_name = account_name if account_name in ['Trivium', 'Jean'] else default_shop
         
-        # Get test_mode from config, default to False (production)
-        test_mode = config.get('test_mode', False)
+        # PRODUCTION MODE: Always use test_mode=False for live labels
+        # Do not read from config - force production mode
+        test_mode = False
         
         # Log mode for clarity
-        if test_mode:
-            logger.warning(f"⚠️  ATENÇÃO: Modo TESTE ativado para {account_name} - Labels de TESTE serão criados")
-        else:
-            logger.info(f"✅ Modo PRODUÇÃO para {account_name} - Labels de PRODUÇÃO serão criados")
+        logger.info(f"✅ Modo PRODUÇÃO para {account_name} - Labels de PRODUÇÃO (LIVE) serão criados")
         
         result = process_account(
             account_name=account_name,
             client_id=client_id,
             client_secret=client_secret,
             shop_name=shop_name,
-            test_mode=test_mode
+            test_mode=False  # PRODUCTION MODE - LIVE LABELS
         )
         
         results.append(result)

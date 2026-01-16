@@ -166,9 +166,9 @@ def test_4_file_generation():
     
     try:
         import os
-        from order_processing import _today_batch_dir
-        
-        batch_dir = _today_batch_dir()
+        from order_processing import _batch_dir
+
+        batch_dir = _batch_dir()
         label_dir = "label"
         
         logger.info(f"Diretório de batches: {batch_dir}")
@@ -215,9 +215,9 @@ def test_5_upload_functionality():
         
         # Verificar se há arquivos para testar upload
         import os
-        from order_processing import _today_batch_dir
-        
-        batch_dir = _today_batch_dir()
+        from order_processing import _batch_dir
+
+        batch_dir = _batch_dir()
         if os.path.exists(batch_dir):
             csv_files = [f for f in os.listdir(batch_dir) if f.endswith('.csv')]
             if csv_files:

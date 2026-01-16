@@ -23,28 +23,39 @@ class BolAPIClient:
     Handles OAuth 2.0 authentication and provides methods to interact with the API
     """
     
-    # API endpoints
+    # API endpoints - PRODUCTION (LIVE) API
+    # Note: Bol.com uses the same API URL for both test and production
+    # The difference is determined by the credentials (client_id/client_secret):
+    # - Production credentials = Live API (real orders, real PDF labels)
+    # - Test credentials = Test/Sandbox API (test orders, test labels)
+    # For production, always use test_mode=False to ensure live API usage
     OAUTH_TOKEN_URL = "https://login.bol.com/token"
-    API_BASE_URL = "https://api.bol.com/retailer"
+    API_BASE_URL = "https://api.bol.com/retailer"  # PRODUCTION API (LIVE)
     
     def __init__(self, client_id: str, client_secret: str, test_mode: bool = False):
         """
-        Initialize the Bol.com API client
+        Initialize the Bol.com API client for PRODUCTION (LIVE) orders
         
         Args:
-            client_id: Bol.com client ID
-            client_secret: Bol.com client secret
-            test_mode: If True, uses test environment (default: False for production)
+            client_id: Bol.com client ID (production credentials for live API)
+            client_secret: Bol.com client secret (production credentials for live API)
+            test_mode: If True, indicates test mode (NOT for production)
+                      PRODUCTION: Always use test_mode=False for live orders and real PDF labels
         """
         self.client_id = client_id
         self.client_secret = client_secret
         self.test_mode = test_mode
         
-        # Log mode for clarity
+        # PRODUCTION MODE: Force test_mode=False to ensure live API usage
+        # The API URL is the same, but credentials determine if it's test or production
+        # For production, we always want test_mode=False to ensure live labels
         if test_mode:
             logger.warning("⚠️  BolAPIClient inicializado em MODO TESTE - Labels de teste serão criados")
+            logger.warning("   ⚠️  ATENÇÃO: Para produção, use test_mode=False para labels LIVE")
         else:
-            logger.info("✅ BolAPIClient inicializado em MODO PRODUÇÃO - Labels de produção serão criados")
+            logger.info("✅ BolAPIClient inicializado em MODO PRODUÇÃO - Labels de PRODUÇÃO (LIVE) serão criados")
+            logger.info("   ✅ Usando API de PRODUÇÃO: https://api.bol.com/retailer (LIVE)")
+            logger.info("   ✅ Credenciais de PRODUÇÃO - Pedidos LIVE serão processados")
         
         # Token management
         self.access_token: Optional[str] = None
@@ -372,7 +383,9 @@ class BolAPIClient:
         if shipping_label_offer_id:
             payload['shippingLabelOfferId'] = shipping_label_offer_id
         
-        logger.info(f"🔍 Creating shipping label for order item {order_item_id}...")
+        logger.info(f"🔍 Creating REAL shipping label via PRODUCTION API (LIVE) for order item {order_item_id}...")
+        logger.info(f"   API Endpoint: {self.API_BASE_URL}{endpoint} (LIVE)")
+        logger.info(f"   Mode: {'TEST' if self.test_mode else 'PRODUCTION (LIVE)'}")
         logger.info(f"📦 Payload: {payload}")
         try:
             response = self._make_request('POST', endpoint, json=payload)
@@ -495,22 +508,26 @@ class BolAPIClient:
     
     def get_shipping_label(self, shipping_label_id: str, label_format: str = "ZPL") -> Dict[str, Any]:
         """
-        Get shipping label data (including ZPL) using shipping label ID
+        Get shipping label data (PRODUCTION - LIVE API) using shipping label ID
+        
+        This uses the PRODUCTION API to download real PDF/ZPL labels for live orders.
+        The API endpoint is: https://api.bol.com/retailer/shipping-labels/{id} (LIVE)
         
         This endpoint can return:
-        - Raw ZPL/PDF data in response body
-        - Track and Trace code in X-Track-And-Trace-Code header
-        - Transporter code in X-Transporter-Code header
+        - Raw ZPL/PDF data in response body (REAL labels from production API)
+        - Track and Trace code in X-Track-And-Trace-Code header (REAL tracking codes)
+        - Transporter code in X-Transporter-Code header (REAL transporter info)
         
         Args:
-            shipping_label_id: Shipping label ID (from process status entityId)
+            shipping_label_id: Shipping label ID (from process status entityId - LIVE label)
             label_format: Label format ("ZPL" or "PDF", default: "ZPL")
+                         For production, use "PDF" to get real PDF labels
             
         Returns:
             Dictionary with:
-            - 'data': Label data (ZPL text or base64-encoded PDF)
-            - 'track_and_trace': Track and trace code from header
-            - 'transporter_code': Transporter code from header
+            - 'data': Label data (ZPL text or PDF bytes - REAL label from production API)
+            - 'track_and_trace': Track and trace code from header (REAL tracking code)
+            - 'transporter_code': Transporter code from header (REAL transporter)
             - 'content_type': Response content type
         """
         endpoint = f"/shipping-labels/{shipping_label_id}"
@@ -545,7 +562,9 @@ class BolAPIClient:
         if label_format:
             params['format'] = label_format
         
-        logger.info(f"Fetching shipping label (format: {label_format}) for shipping label ID {shipping_label_id}...")
+        logger.info(f"📥 Fetching REAL shipping label from PRODUCTION API (format: {label_format}) for shipping label ID {shipping_label_id}...")
+        logger.info(f"   API Endpoint: {self.API_BASE_URL}{endpoint} (LIVE)")
+        logger.info(f"   Mode: {'TEST' if self.test_mode else 'PRODUCTION (LIVE)'}")
         
         try:
             response = self.session.get(url, headers=headers, params=params)
