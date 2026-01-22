@@ -62,10 +62,42 @@ def process_account(account_name: str, client_id: str, client_secret: str,
             logger.error(f"Failed to create API client for {account_name}: {client_error}")
             raise
         
-        # Fetch orders
+        # Fetch orders - get list first, then fetch individual orders for complete details
         try:
-            raw_orders = client.get_all_open_orders()
-            all_orders = [Order.from_dict(o) for o in raw_orders]
+            logger.info(f"📋 Fetching list of open orders for {account_name}...")
+            raw_orders_list = client.get_all_open_orders()
+            
+            if not raw_orders_list:
+                logger.info(f"No open orders for account {account_name}")
+                all_orders = []
+            else:
+                logger.info(f"📋 Found {len(raw_orders_list)} open order(s) for {account_name}, fetching individual order details...")
+                
+                # Fetch individual orders to get complete order item information
+                # According to bol.com API, get_order() returns full order details with all order items
+                all_orders = []
+                for order_summary in raw_orders_list:
+                    order_id = order_summary.get('orderId')
+                    if not order_id:
+                        logger.warning(f"⚠️ Order summary missing orderId, skipping: {order_summary}")
+                        continue
+                    
+                    try:
+                        # Fetch individual order for complete details
+                        full_order_data = client.get_order(order_id)
+                        order = Order.from_dict(full_order_data)
+                        all_orders.append(order)
+                        logger.debug(f"✅ Fetched full details for order {order_id} ({len(order.order_items)} item(s))")
+                    except Exception as fetch_error:
+                        logger.error(f"❌ Failed to fetch order {order_id}: {fetch_error}")
+                        # Fallback: try to use summary data if available
+                        try:
+                            order = Order.from_dict(order_summary)
+                            all_orders.append(order)
+                            logger.warning(f"⚠️ Using summary data for order {order_id} (some details may be missing)")
+                        except Exception as fallback_error:
+                            logger.error(f"❌ Failed to parse order summary for {order_id}: {fallback_error}")
+                            continue
         except Exception as fetch_error:
             logger.error(f"Failed to fetch orders for {account_name}: {fetch_error}")
             raise
@@ -103,11 +135,38 @@ def process_account(account_name: str, client_id: str, client_secret: str,
         
         logger.info(f"Processing {len(orders)} new orders for {account_name} (from {len(all_orders)} total)")
         
+        # Debug: Log order details before classification
+        logger.info(f"📋 Debug: Checking order details for {account_name}...")
+        for order in orders:
+            logger.info(f"   Order {order.order_id}:")
+            logger.info(f"      - Status: {order.status}")
+            logger.info(f"      - Order items count: {len(order.order_items)}")
+            if order.order_items:
+                for idx, item in enumerate(order.order_items):
+                    logger.info(f"      - Item {idx + 1}: orderItemId={item.order_item_id}, EAN={item.ean}, quantity={item.quantity}")
+            else:
+                logger.warning(f"      ⚠️ Order {order.order_id} has NO order items!")
+        
         # Classify orders
         try:
             grouped = classify_orders(orders)
+            
+            # Log classification results
+            total_classified = sum(len(grouped[cat]) for cat in grouped)
+            logger.info(f"📋 Classification results for {account_name}:")
+            logger.info(f"   Single: {len(grouped['Single'])} order(s)")
+            logger.info(f"   SingleLine: {len(grouped['SingleLine'])} order(s)")
+            logger.info(f"   Multi: {len(grouped['Multi'])} order(s)")
+            logger.info(f"   Total classified: {total_classified} out of {len(orders)} order(s)")
+            
+            if total_classified == 0:
+                logger.error(f"❌ No orders were classified for {account_name}!")
+                logger.error(f"   This means orders cannot be processed.")
+                logger.error(f"   Check the order details above to see why.")
         except Exception as classify_error:
             logger.error(f"Failed to classify orders for {account_name}: {classify_error}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             raise
         
         # Temporarily override DEFAULT_SHOP_NAME to use the correct shop for this account
@@ -223,7 +282,7 @@ def process_all_accounts() -> Dict:
     results = []
     total_orders_all = 0
     
-    for account in active_accounts:
+    for account_index, account in enumerate(active_accounts, 1):
         account_name = account['name']
         client_id = account['client_id']
         client_secret = account['client_secret']
@@ -236,18 +295,43 @@ def process_all_accounts() -> Dict:
         test_mode = False
         
         # Log mode for clarity
+        logger.info("")
+        logger.info("="*80)
+        logger.info(f"Processing Account {account_index}/{len(active_accounts)}: {account_name} (Shop: {shop_name})")
+        logger.info("="*80)
         logger.info(f"✅ Modo PRODUÇÃO para {account_name} - Labels de PRODUÇÃO (LIVE) serão criados")
         
-        result = process_account(
-            account_name=account_name,
-            client_id=client_id,
-            client_secret=client_secret,
-            shop_name=shop_name,
-            test_mode=False  # PRODUCTION MODE - LIVE LABELS
-        )
-        
-        results.append(result)
-        total_orders_all += result.get('processed', 0)
+        try:
+            result = process_account(
+                account_name=account_name,
+                client_id=client_id,
+                client_secret=client_secret,
+                shop_name=shop_name,
+                test_mode=False  # PRODUCTION MODE - LIVE LABELS
+            )
+            
+            results.append(result)
+            total_orders_all += result.get('processed', 0)
+            
+            # Log result
+            if result.get('success', False):
+                logger.info(f"✅ Successfully processed {account_name}: {result.get('processed', 0)} order(s)")
+            else:
+                logger.error(f"❌ Failed to process {account_name}: {result.get('error', 'Unknown error')}")
+        except Exception as account_error:
+            logger.error(f"❌ Exception processing account {account_name}: {account_error}")
+            import traceback
+            logger.error(traceback.format_exc())
+            # Add error result but continue with next account
+            results.append({
+                'account': account_name,
+                'shop': shop_name,
+                'total_orders': 0,
+                'processed': 0,
+                'files_created': [],
+                'success': False,
+                'error': str(account_error)
+            })
     
     logger.info("="*80)
     logger.info(f"Multi-account processing complete:")

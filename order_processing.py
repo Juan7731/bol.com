@@ -21,7 +21,7 @@ from typing import List, Dict, Tuple, Optional, Any
 import base64
 
 from bol_api_client import BolAPIClient
-from bol_dtos import Order
+from bol_dtos import Order, CustomerDetails
 from order_database import (
     init_database,
     mark_order_processed,
@@ -59,11 +59,12 @@ logger = logging.getLogger(__name__)
 
 # Import label uploader for automatic PDF upload
 try:
-    from label_uploader import upload_all_labels
+    from label_uploader import upload_all_labels, upload_labels_for_csv_files
     LABEL_UPLOADER_AVAILABLE = True
 except ImportError:
     logger.warning("label_uploader module not found - label PDFs will not be uploaded automatically")
     LABEL_UPLOADER_AVAILABLE = False
+    upload_labels_for_csv_files = None
 
 import paramiko
 import smtplib
@@ -128,10 +129,42 @@ def _determine_next_batch_number(batch_dir: str) -> str:
 def classify_orders(orders: List[Order]) -> Dict[str, List[Order]]:
     """Group orders into Single, SingleLine, Multi based on DTO properties."""
     groups: Dict[str, List[Order]] = {"Single": [], "SingleLine": [], "Multi": []}
+    
+    logger.info(f"📋 Classifying {len(orders)} order(s)...")
+    
     for order in orders:
         cat = order.category
+        logger.info(f"   Order {order.order_id}: {len(order.order_items)} item(s), Category: {cat}")
+        
+        # Log order item details for debugging
+        if not order.order_items:
+            logger.warning(f"   ⚠️ Order {order.order_id} has NO order items - cannot be classified")
+            continue
+        
+        for idx, item in enumerate(order.order_items):
+            logger.info(f"      Item {idx + 1}: orderItemId={item.order_item_id}, EAN={item.ean}, quantity={item.quantity}, fulfilment={item.fulfilment_method}")
+        
         if cat in groups:
             groups[cat].append(order)
+            logger.info(f"   ✅ Order {order.order_id} classified as {cat}")
+        else:
+            logger.warning(f"   ⚠️ Order {order.order_id} category '{cat}' not recognized - skipping")
+    
+    # Log classification summary
+    total_classified = sum(len(groups[cat]) for cat in groups)
+    logger.info(f"📋 Classification summary:")
+    logger.info(f"   Single: {len(groups['Single'])} order(s)")
+    logger.info(f"   SingleLine: {len(groups['SingleLine'])} order(s)")
+    logger.info(f"   Multi: {len(groups['Multi'])} order(s)")
+    logger.info(f"   Total classified: {total_classified} out of {len(orders)} order(s)")
+    
+    if total_classified == 0 and len(orders) > 0:
+        logger.error(f"❌ No orders were classified! This means:")
+        logger.error(f"   - Orders might not have order items")
+        logger.error(f"   - Order items might not have EANs")
+        logger.error(f"   - Order structure might be different than expected")
+        logger.error(f"   - Check the logs above for order item details")
+    
     return groups
 
 
@@ -248,12 +281,19 @@ def _save_pdf_label(pdf_data: bytes, label_id: str) -> str:
 
 def _generate_production_pdf_label(shipping_label_id: str, order_item_id: str, order_id: str, 
                                    track_and_trace: Optional[str] = None, 
-                                   transporter_code: Optional[str] = None) -> bytes:
+                                   transporter_code: Optional[str] = None,
+                                   customer_details: Optional[Any] = None,
+                                   quantity: int = 1) -> bytes:
     """
-    Generate a production PDF label with real shipping information
+    [DEPRECATED - DO NOT USE]
     
-    This is used as a fallback when the Bol.com API doesn't provide a PDF directly.
-    It includes real track & trace and transporter information when available.
+    This function generates custom PDF labels which DO NOT meet carrier requirements.
+    
+    CRITICAL: Custom PDFs are NOT acceptable - carrier requires exact format from Bol.com API.
+    This function is kept only for reference but should NEVER be called in production.
+    
+    Only OFFICIAL PDFs downloaded directly from Bol.com API are acceptable.
+    Use get_shipping_label() with label_format="PDF" to get official labels.
     
     Args:
         shipping_label_id: Shipping label ID from Bol.com
@@ -261,10 +301,16 @@ def _generate_production_pdf_label(shipping_label_id: str, order_item_id: str, o
         order_id: Order ID
         track_and_trace: Real track & trace code from API (optional)
         transporter_code: Real transporter code from API (optional)
+        customer_details: CustomerDetails object with recipient information (optional)
+        quantity: Quantity of items in the shipment (default: 1)
     
     Returns:
-        PDF data as bytes
+        PDF data as bytes (but this PDF does NOT meet carrier requirements)
     """
+    logger.error("⚠️  WARNING: Custom PDF generation called - this should NOT happen!")
+    logger.error("   Custom PDFs do NOT meet carrier requirements")
+    logger.error("   Only OFFICIAL PDFs from Bol.com API are acceptable")
+    raise Exception("Custom PDF generation is not supported - only official PDFs from Bol.com API are acceptable")
     from reportlab.lib.pagesizes import letter
     from reportlab.pdfgen import canvas
     from io import BytesIO
@@ -276,37 +322,11 @@ def _generate_production_pdf_label(shipping_label_id: str, order_item_id: str, o
     c = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
     
-    # Add content
-    c.setFont("Helvetica-Bold", 24)
-    c.drawString(100, height - 100, "BOL.COM SHIPPING LABEL")
-    
-    c.setFont("Helvetica", 12)
-    c.drawString(100, height - 150, f"Label ID: {shipping_label_id}")
-    c.drawString(100, height - 170, f"Order ID: {order_id}")
-    c.drawString(100, height - 190, f"Order Item: {order_item_id}")
-    c.drawString(100, height - 210, f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    
-    c.line(100, height - 230, width - 100, height - 230)
-    
-    # Show if using real data from API
-    if track_and_trace or transporter_code:
-        c.setFont("Helvetica-Bold", 10)
-        c.drawString(100, height - 250, "✓ PRODUCTION LABEL - Real shipping data from Bol.com API")
-    
-    # Use REAL track & trace from Bol.com API if available
-    if track_and_trace:
-        track_trace_display = track_and_trace
-        track_trace_label = "Track & Trace (REAL):"
-    else:
-        # Generate a reference code based on label ID (for tracking purposes)
-        track_trace_display = f"3SBOL{shipping_label_id[:10].replace('-', '')}"
-        track_trace_label = "Reference Code:"
-    
-    # Use REAL transporter code from Bol.com API if available
+    # Determine transporter - default to POSTNL if not specified
     if transporter_code:
         # Map transporter codes to readable names
         transporter_map = {
-            'POSTNL': 'PostNL',
+            'POSTNL': 'POSTNL',
             'DHL': 'DHL',
             'DPD': 'DPD',
             'TNT': 'TNT',
@@ -314,22 +334,80 @@ def _generate_production_pdf_label(shipping_label_id: str, order_item_id: str, o
             'GLS': 'GLS'
         }
         carrier_display = transporter_map.get(transporter_code.upper(), transporter_code.upper())
+        is_postnl = transporter_code.upper() == 'POSTNL'
     else:
-        carrier_display = "PostNL / DHL / DPD"
+        carrier_display = "POSTNL"  # Default to POSTNL
+        is_postnl = True
     
-    c.setFont("Helvetica-Bold", 14)
-    c.drawString(100, height - 280, f"{track_trace_label} {track_trace_display}")
-    if transporter_code:
-        c.drawString(100, height - 310, f"Carrier (REAL): {carrier_display}")
+    # Sender Information (Top Left)
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(100, height - 50, "Afzender.")
+    c.setFont("Helvetica", 10)
+    c.drawString(100, height - 65, "Dormivo")
+    c.drawString(100, height - 80, "Watermolen 1")
+    c.drawString(100, height - 95, "6229PM MAASTRICHT")
+    c.drawString(100, height - 110, "THE NETHERLANDS")
+    
+    # Bol.com Reference (Top Center)
+    c.setFont("Helvetica", 10)
+    c.drawString(width/2 - 50, height - 50, f"bol ref: {order_id}")
+    
+    # Recipient Information Box with POSTNL header (Central, prominent)
+    recipient_box_y = height - 200
+    recipient_box_height = 150
+    recipient_box_x = 100
+    recipient_box_width = width - 200
+    
+    # Draw recipient box
+    c.setStrokeColorRGB(0, 0, 0)
+    c.setLineWidth(2)
+    c.rect(recipient_box_x, recipient_box_y - recipient_box_height, recipient_box_width, recipient_box_height)
+    
+    # POSTNL Header (prominently displayed)
+    c.setFont("Helvetica-Bold", 20)
+    c.drawString(recipient_box_x + 10, recipient_box_y - 30, "POSTNL")
+    
+    # Recipient details (placeholder - in real implementation, get from order data)
+    c.setFont("Helvetica", 12)
+    c.drawString(recipient_box_x + 10, recipient_box_y - 60, "Recipient Name")
+    c.drawString(recipient_box_x + 10, recipient_box_y - 80, "Street Address")
+    c.drawString(recipient_box_x + 10, recipient_box_y - 100, "Postal Code & City")
+    c.drawString(recipient_box_x + 10, recipient_box_y - 120, "Country")
+    
+    # Package count
+    c.setFont("Helvetica", 10)
+    c.drawString(recipient_box_x + recipient_box_width - 80, recipient_box_y - 30, "1 Collo")
+    
+    # Track & Trace and Barcode section (Bottom)
+    bottom_y = recipient_box_y - recipient_box_height - 50
+    
+    # Use REAL track & trace from Bol.com API if available
+    if track_and_trace:
+        track_trace_display = track_and_trace
+        track_trace_label = "Track & Trace:"
     else:
-        c.drawString(100, height - 310, f"Carrier: {carrier_display}")
+        # Generate a reference code based on label ID (for tracking purposes)
+        track_trace_display = f"3SNNIW{shipping_label_id[:10].replace('-', '')}"
+        track_trace_label = "Reference Code:"
     
-    # Add production notice
-    c.setFont("Helvetica", 9)
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(100, bottom_y, f"{track_trace_label} {track_trace_display}")
+    
+    # Carrier information
+    c.setFont("Helvetica", 10)
+    c.drawString(100, bottom_y - 20, f"Carrier: {carrier_display}")
+    
+    # Label metadata
+    c.setFont("Helvetica", 8)
+    c.drawString(100, bottom_y - 40, f"Label ID: {shipping_label_id}")
+    c.drawString(100, bottom_y - 55, f"Order ID: {order_id}")
+    c.drawString(100, bottom_y - 70, f"Order Item: {order_item_id}")
+    c.drawString(100, bottom_y - 85, f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    
+    # Production notice
     if track_and_trace or transporter_code:
-        c.drawString(100, height - 340, "PRODUCTION Shipping Label - Real data from Bol.com API")
-    else:
-        c.drawString(100, height - 340, "PRODUCTION Shipping Label - Generated by Bol.com Order Processing System")
+        c.setFont("Helvetica", 8)
+        c.drawString(100, bottom_y - 100, "✓ PRODUCTION LABEL - Real shipping data from Bol.com API")
     
     # Finish PDF
     c.showPage()
@@ -369,12 +447,17 @@ def _generate_mock_tracking_info(shipping_label_id: str, order_item_id: str) -> 
     return f"{track_code} ({carrier})"
 
 
-def _fetch_zpl_label(client: BolAPIClient, order_item_id: str, order_id: str, quantity: int = 1) -> str:
+def _fetch_zpl_label(client: BolAPIClient, order_item_id: str, order_id: str, quantity: int = 1, customer_details: Optional[CustomerDetails] = None) -> str:
     """
-    Fetch shipping label, download PDF, and save to label folder
+    Fetch shipping label following bol.com API v10 flow:
+    1. Get delivery options (to get shippingLabelOfferId)
+    2. Request shipping label (using shippingLabelOfferId)
+    3. Wait for process status to complete
+    4. Download PDF shipping label
+    5. Save and return label identifier
     
-    Returns the label identifier (PDF filename without extension) that is stored in Excel.
-    This allows you to match Excel orders to their PDF labels in the label folder.
+    Returns the label identifier (PDF filename without extension) that is stored in CSV.
+    This allows you to match CSV orders to their PDF labels in the label folder.
     
     Example return: "987654321" means the PDF is saved as label/987654321.pdf
     
@@ -385,19 +468,104 @@ def _fetch_zpl_label(client: BolAPIClient, order_item_id: str, order_id: str, qu
         order_item_id: Order item ID
         order_id: Order ID for reference
         quantity: Quantity for the order item (default: 1)
+        customer_details: Optional customer details
         
     Returns:
-        Label identifier matching the PDF filename (without .pdf extension)
+        Label identifier matching the PDF filename (without .pdf extension), or empty string if failed
     """
     import base64
     import time as time_module
     
     try:
-        logger.info(f"🔍 Fetching ZPL label for order item {order_item_id} using 'verzenden via bol'...")
+        logger.info(f"🔍 Starting shipping label flow for order item {order_item_id} (quantity: {quantity})...")
         
-        # Step 1: Create shipping label (will use 'verzenden via bol' automatically)
+        # Step 1: Get delivery options to obtain shippingLabelOfferId
+        # According to bol.com API documentation, we need to get delivery options first
+        # API endpoint: POST /shipping-labels/delivery-options
+        logger.info(f"📋 Step 1: Getting delivery options for order item {order_item_id} (quantity: {quantity})...")
+        logger.info(f"   Order ID: {order_id}")
+        logger.info(f"   API Endpoint: POST /shipping-labels/delivery-options")
+        
         try:
-            label_response = client.create_shipping_label(order_item_id, quantity=quantity)
+            delivery_options_response = client.get_delivery_options(order_item_id, quantity=quantity)
+            
+            # Check if response is valid
+            if not delivery_options_response:
+                logger.error(f"❌ Empty response from get_delivery_options for order item {order_item_id}")
+                return ""
+            
+            # Check for errors in response
+            if 'errorMessage' in delivery_options_response:
+                error_msg = delivery_options_response.get('errorMessage')
+                logger.error(f"❌ API returned error message: {error_msg}")
+                return ""
+            
+            if 'errors' in delivery_options_response:
+                errors = delivery_options_response.get('errors', [])
+                if errors:
+                    logger.error(f"❌ API returned errors: {errors}")
+                    return ""
+            
+            delivery_options = delivery_options_response.get('deliveryOptions', [])
+            
+            if not delivery_options:
+                logger.error(f"❌ No delivery options available for order item {order_item_id}")
+                logger.error(f"   Response keys: {list(delivery_options_response.keys())}")
+                logger.error(f"   This usually means:")
+                logger.error(f"   1. The order item is not FBR (Fulfilled By Retailer)")
+                logger.error(f"   2. The orderItemId '{order_item_id}' is invalid")
+                logger.error(f"   3. Only FBR items can get shipping labels")
+                logger.error(f"   Make sure you're using the orderItemId from orderItems, not the orderId")
+                return ""
+            
+            logger.info(f"✅ Found {len(delivery_options)} delivery option(s)")
+            
+            # Log all available options for debugging
+            for idx, option in enumerate(delivery_options):
+                option_id = option.get('shippingLabelOfferId', 'N/A')
+                label_name = option.get('labelDisplayName', 'N/A')
+                transporter = option.get('transporterCode', 'N/A')
+                logger.info(f"   Option {idx + 1}: {label_name} (ID: {option_id}, Transporter: {transporter})")
+            
+            # Look for "verzenden via bol" offer (preferred)
+            shipping_label_offer_id = None
+            for option in delivery_options:
+                label_display_name = option.get('labelDisplayName', '').lower()
+                if 'verzenden via bol' in label_display_name or 'bol' in label_display_name:
+                    shipping_label_offer_id = option.get('shippingLabelOfferId')
+                    logger.info(f"✅ Found 'verzenden via bol' offer: {shipping_label_offer_id}")
+                    break
+            
+            # If not found, use first available offer
+            if not shipping_label_offer_id and delivery_options:
+                shipping_label_offer_id = delivery_options[0].get('shippingLabelOfferId')
+                label_name = delivery_options[0].get('labelDisplayName', 'Unknown')
+                logger.info(f"⚠️ 'verzenden via bol' not found, using first available offer: {shipping_label_offer_id} ({label_name})")
+            
+            if not shipping_label_offer_id:
+                logger.error(f"❌ No shippingLabelOfferId found in delivery options")
+                logger.error(f"   Available options: {delivery_options}")
+                return ""
+                
+        except Exception as delivery_error:
+            error_str = str(delivery_error)
+            logger.error(f"❌ Failed to get delivery options for order item {order_item_id}: {delivery_error}")
+            logger.error(f"   Error type: {type(delivery_error).__name__}")
+            if "404" in error_str or "Not Found" in error_str:
+                logger.error(f"   This usually means the order item is not FBR (Fulfilled By Retailer)")
+                logger.error(f"   Only FBR items can get shipping labels")
+            import traceback
+            logger.error(f"   Traceback: {traceback.format_exc()}")
+            return ""
+        
+        # Step 2: Request shipping label using shippingLabelOfferId
+        logger.info(f"📋 Step 2: Creating shipping label for order item {order_item_id} with offer ID {shipping_label_offer_id}...")
+        try:
+            label_response = client.create_shipping_label(
+                order_item_id, 
+                shipping_label_offer_id=shipping_label_offer_id,
+                quantity=quantity
+            )
         except Exception as create_error:
             logger.error(f"❌ Failed to create shipping label for order item {order_item_id}: {create_error}")
             logger.error(f"Error type: {type(create_error).__name__}")
@@ -421,82 +589,48 @@ def _fetch_zpl_label(client: BolAPIClient, order_item_id: str, order_id: str, qu
                 logger.error(f"❌ API returned errors for order item {order_item_id}: {errors}")
                 return ""
         
-        # Log full response for debugging (use INFO level so it's visible)
+        # Log response structure for debugging
         logger.info(f"📦 Create shipping label response keys: {list(label_response.keys())}")
-        logger.info(f"📦 Create shipping label response (first 2000 chars): {str(label_response)[:2000]}")
         
-        # Step 2: Extract processStatusId or shipmentId from response
-        # According to API v10, the response may contain:
-        # - processStatusId directly (for async processing)
-        # - shipmentId directly
-        # - OR nested under processStatus
+        # Step 3: Extract processStatusId from response
+        # According to bol.com API v10, the response contains processStatusId for async processing
         process_status_id = None
-        shipment_id = None
         shipping_label_id = None
         
-        # Try direct processStatusId (most common in async flow)
+        # Try direct processStatusId (most common)
         if 'processStatusId' in label_response:
             process_status_id = label_response.get('processStatusId')
-            logger.info(f"Found processStatusId: {process_status_id}")
+            logger.info(f"✅ Found processStatusId: {process_status_id}")
         
-        # Try processStatus.processStatusId (nested structure)
+        # Try nested processStatus.processStatusId
         if not process_status_id and 'processStatus' in label_response:
             process_status = label_response.get('processStatus', {})
             process_status_id = process_status.get('processStatusId')
-            shipment_id = process_status.get('shipmentId')
-            entity_id = process_status.get('entityId')  # This would be shippingLabelId if available
-            
-            if process_status_id:
-                logger.info(f"Found processStatusId in processStatus: {process_status_id}")
-            if shipment_id:
-                logger.info(f"Found shipmentId in processStatus: {shipment_id}")
+            entity_id = process_status.get('entityId')  # This would be shippingLabelId if available immediately
             if entity_id:
-                logger.info(f"Found entityId (shippingLabelId) in processStatus: {entity_id}")
                 shipping_label_id = entity_id
+                logger.info(f"✅ Found shippingLabelId directly in processStatus: {shipping_label_id}")
         
-        # Try direct shipmentId
-        if not shipment_id and 'shipmentId' in label_response:
-            shipment_id = label_response.get('shipmentId')
-            logger.info(f"Found shipment ID directly: {shipment_id}")
+        if not process_status_id:
+            logger.error(f"❌ No processStatusId found in label response for order item {order_item_id}")
+            logger.error(f"Response keys: {list(label_response.keys())}")
+            logger.error(f"Response (first 1000 chars): {str(label_response)[:1000]}")
+            return ""
         
-        # Try shipments array
-        if not shipment_id and 'shipments' in label_response:
-            shipments = label_response.get('shipments', [])
-            if shipments:
-                shipment_id = shipments[0].get('shipmentId')
-                if shipment_id:
-                    logger.info(f"Found shipment ID in shipments array: {shipment_id}")
-        
-        # Check if label data is already in the response
-        label_data = None
-        if 'label' in label_response:
-            label_obj = label_response.get('label', {})
-            label_data = label_obj.get('data') or label_obj.get('labelData')
-        if not label_data and 'labelData' in label_response:
-            label_data = label_response.get('labelData')
-        
-        if label_data:
-            try:
-                zpl_data = base64.b64decode(label_data).decode('utf-8')
-                logger.info(f"✅ Found ZPL label directly in response ({len(zpl_data)} chars)")
-                return zpl_data
-            except Exception:
-                zpl_data = str(label_data)
-                if zpl_data.startswith('^XA') or 'ZPL' in zpl_data.upper() or len(zpl_data) > 100:
-                    logger.info(f"✅ Found ZPL label (plain text) in response ({len(zpl_data)} chars)")
-                    return zpl_data
-                return zpl_data if zpl_data else ""
-        
-        # Step 3: Handle async process if we have processStatusId
-        if process_status_id and not shipping_label_id:
-            logger.info(f"Waiting for async process {process_status_id} to complete...")
-            max_status_checks = 10
+        # Step 4: Wait for async process to complete and get shippingLabelId
+        if not shipping_label_id:
+            logger.info(f"📋 Step 3: Waiting for async process {process_status_id} to complete...")
+            max_status_checks = 15  # Increased to allow more time for label generation
+            check_interval = 2  # Wait 2 seconds between checks
+            
             for status_check in range(max_status_checks):
-                time_module.sleep(2)  # Wait 2 seconds between checks
+                if status_check > 0:
+                    time_module.sleep(check_interval)
+                
                 try:
                     status_response = client.get_process_status(process_status_id)
                     status = status_response.get('status', '').upper()
-                    logger.info(f"Process status check {status_check + 1}/{max_status_checks}: {status}")
+                    logger.info(f"   Process status check {status_check + 1}/{max_status_checks}: {status}")
                     
                     if status == 'SUCCESS':
                         # Get entityId which is the shippingLabelId
@@ -504,250 +638,143 @@ def _fetch_zpl_label(client: BolAPIClient, order_item_id: str, order_id: str, qu
                         if shipping_label_id:
                             logger.info(f"✅ Process completed successfully, shippingLabelId: {shipping_label_id}")
                             break
+                        else:
+                            logger.warning(f"⚠️ Process status is SUCCESS but no entityId found")
+                            logger.warning(f"   Response keys: {list(status_response.keys())}")
+                            # Continue checking - entityId might appear later
+                            
                     elif status in ['FAILURE', 'TIMEOUT', 'CANCELLED']:
-                        logger.error(f"Process failed with status: {status}")
+                        logger.error(f"❌ Process failed with status: {status}")
                         error_message = status_response.get('errorMessage', 'Unknown error')
-                        logger.error(f"Error message: {error_message}")
+                        logger.error(f"   Error message: {error_message}")
                         return ""
+                    elif status == 'PENDING':
+                        logger.info(f"   Process still pending, will check again...")
+                    else:
+                        logger.info(f"   Process status: {status}, will check again...")
+                        
                 except Exception as status_error:
-                    logger.warning(f"Error checking process status: {status_error}")
+                    logger.warning(f"⚠️ Error checking process status (attempt {status_check + 1}): {status_error}")
                     if status_check < max_status_checks - 1:
                         continue
                     else:
+                        logger.error(f"❌ Failed to check process status after {max_status_checks} attempts")
                         return ""
+            
+            if not shipping_label_id:
+                logger.error(f"❌ Could not get shippingLabelId from process status after {max_status_checks} checks")
+                return ""
         
-        # Step 4: Download PDF shipping label and save to label folder
-        if shipping_label_id:
-            logger.info(f"✅ Successfully created shipping label for order item {order_item_id}: {shipping_label_id}")
-            
-            # Try to download the PDF label (PRODUCTION MODE - try harder to get real labels)
-            max_retries = 5  # Increased retries for production
-            wait_between_retries = [3, 5, 10, 15, 20]  # Progressive wait times
-            
-            for attempt in range(max_retries):
-                try:
-                    if attempt > 0:
-                        wait_time = wait_between_retries[min(attempt - 1, len(wait_between_retries) - 1)]
-                        logger.info(f"⏳ Waiting {wait_time}s before retry {attempt + 1}/{max_retries}...")
-                        time_module.sleep(wait_time)
-                        logger.info(f"🔄 Retry {attempt + 1}/{max_retries}: Attempting to download REAL PDF label from Bol.com API...")
-                    else:
-                        logger.info(f"📥 Attempt {attempt + 1}/{max_retries}: Downloading REAL PDF label from Bol.com API...")
-                    
-                    # Try to fetch REAL PDF label from Bol.com API (PRODUCTION - real labels only)
-                    # This should return the actual shipping label PDF with barcode, address, etc.
-                    label_response = client.get_shipping_label(shipping_label_id, label_format="PDF")
-                    pdf_data = label_response.get('data', None)
-                    content_type = label_response.get('content_type', '')
-                    
-                    logger.info(f"📥 Response content type: {content_type}, data type: {type(pdf_data)}")
-                    
-                    # Check if we got PDF data (REAL label from Bol.com)
-                    if pdf_data:
-                        # Handle different data formats
-                        if isinstance(pdf_data, str):
-                            # Might be base64 encoded
-                            try:
-                                pdf_bytes = base64.b64decode(pdf_data)
-                            except:
-                                # Not base64, might be raw string
-                                pdf_bytes = pdf_data.encode('utf-8') if isinstance(pdf_data, str) else pdf_data
-                        elif isinstance(pdf_data, bytes):
-                            pdf_bytes = pdf_data
-                        else:
-                            # JSON response might contain label in nested structure
-                            if isinstance(pdf_data, dict):
-                                # Try to extract from common structures
-                                base64_data = (pdf_data.get('base64EncodedData') or 
-                                             pdf_data.get('data') or 
-                                             pdf_data.get('content'))
-                                if base64_data:
-                                    try:
-                                        pdf_bytes = base64.b64decode(base64_data)
-                                    except:
-                                        logger.warning(f"Failed to decode base64 data")
-                                        continue
-                                else:
-                                    logger.warning(f"No PDF data found in response structure")
-                                    continue
-                            else:
-                                logger.warning(f"Unexpected PDF data type: {type(pdf_data)}")
-                                continue
-                        
-                        # Validate it's actually a PDF (REAL label from Bol.com)
-                        if pdf_bytes[:4] == b'%PDF':
-                            # This is a REAL PDF label from Bol.com - save it directly
-                            label_id = _save_pdf_label(pdf_bytes, shipping_label_id)
-                            logger.info(f"✅ Downloaded and saved REAL PDF label from Bol.com API: {label_id}.pdf ({len(pdf_bytes)} bytes)")
-                            logger.info(f"   This is a LIVE production label with real shipping information")
-                            return label_id
-                        else:
-                            logger.warning(f"⚠️ Downloaded data doesn't appear to be a PDF (attempt {attempt + 1}/{max_retries})")
-                            logger.warning(f"   First 100 bytes: {pdf_bytes[:100]}")
-                    
-                    logger.info(f"No PDF data in response yet (attempt {attempt + 1}/{max_retries})")
-                    
-                except Exception as e:
-                    error_msg = str(e)
-                    logger.info(f"Attempt {attempt + 1}/{max_retries} failed: {error_msg}")
-                    
-                    if "400" in error_msg or "406" in error_msg:
-                        # API returned 406 - this means Accept header issue
-                        # Try with different Accept header or wait longer for label to be ready
-                        if attempt < max_retries - 1:
-                            logger.warning(f"⚠️ API returned {error_msg[:50]}... This may be an Accept header issue.")
-                            logger.warning(f"   Will wait longer and retry - labels may need time to be generated by Bol.com")
-                            # Don't try ZPL here - wait and retry PDF
-                            continue
-                        else:
-                            # Last attempt - try alternative methods
-                            logger.warning(f"⚠️ All PDF download attempts failed. Trying alternative methods...")
-                            # Try ZPL as last resort before generating generic PDF
-                            try:
-                                logger.info(f"🔄 Trying ZPL format as last resort...")
-                                zpl_response = client.get_shipping_label(shipping_label_id, label_format="ZPL")
-                                zpl_data = zpl_response.get('data', None)
-                                if zpl_data and isinstance(zpl_data, (str, bytes)):
-                                    logger.warning(f"⚠️ Got ZPL data but cannot convert to real PDF label.")
-                                    logger.warning(f"   ZPL labels need special printers - will generate PDF with real shipping info instead...")
-                                    # Get real shipping info and generate PDF
-                                    try:
-                                        label_info = client.get_shipping_label_info(shipping_label_id)
-                                        track_and_trace = label_info.get('track_and_trace', '')
-                                        transporter_code = label_info.get('transporter_code', '')
-                                        production_pdf = _generate_production_pdf_label(
-                                            shipping_label_id, order_item_id, order_id,
-                                            track_and_trace=track_and_trace if track_and_trace else None,
-                                            transporter_code=transporter_code if transporter_code else None
-                                        )
-                                        label_id = _save_pdf_label(production_pdf, shipping_label_id)
-                                        logger.info(f"✅ Generated PDF from ZPL label with real shipping info: {label_id}.pdf")
-                                        return label_id
-                                    except Exception as zpl_pdf_error:
-                                        logger.warning(f"Failed to generate PDF from ZPL: {zpl_pdf_error}")
-                                    # Continue to fall through to generate PDF with real info
-                            except Exception as zpl_error:
-                                logger.warning(f"ZPL format also failed: {zpl_error}")
-                            break
-            
-            # If real PDF download failed, try to get REAL PDF using alternative methods
-            # PRODUCTION MODE: Must get REAL label from Bol.com, not generate generic one
-            logger.warning(f"⚠️ Direct PDF download failed. Trying alternative methods to get REAL label from Bol.com...")
-            
-            # Method 1: Try waiting longer and retry (labels may need time to be generated)
-            logger.info(f"⏳ Waiting 10 seconds for Bol.com to generate the label, then retrying...")
-            time_module.sleep(10)
+        # Step 5: Download PDF shipping label from Bol.com API
+        logger.info(f"📋 Step 4: Downloading PDF shipping label {shipping_label_id} from Bol.com API...")
+        logger.info(f"   Using endpoint: GET /retailer/shipping-labels/{shipping_label_id}")
+        logger.info(f"   Accept header: application/pdf")
+        
+        # Wait a bit for the label to be ready (Bol.com may need time to generate it)
+        logger.info(f"⏳ Waiting 3 seconds for Bol.com to generate the label...")
+        time_module.sleep(3)
+        
+        # Try to download the PDF label with retries
+        max_retries = 10  # Increased retries
+        wait_between_retries = [2, 3, 5, 5, 10, 10, 15, 15, 20]  # Progressive wait times
+        
+        for attempt in range(max_retries):
             try:
-                logger.info(f"🔄 Final retry: Attempting to download REAL PDF label...")
+                if attempt > 0:
+                    wait_time = wait_between_retries[min(attempt - 1, len(wait_between_retries) - 1)]
+                    logger.info(f"⏳ Waiting {wait_time}s before retry {attempt + 1}/{max_retries}...")
+                    time_module.sleep(wait_time)
+                    logger.info(f"🔄 Retry {attempt + 1}/{max_retries}: Downloading PDF from Bol.com API...")
+                else:
+                    logger.info(f"📥 Attempt {attempt + 1}/{max_retries}: Downloading PDF from Bol.com API...")
+                
+                # Fetch PDF label from Bol.com API
                 label_response = client.get_shipping_label(shipping_label_id, label_format="PDF")
                 pdf_data = label_response.get('data', None)
-                if pdf_data and isinstance(pdf_data, bytes) and pdf_data[:4] == b'%PDF':
-                    label_id = _save_pdf_label(pdf_data, shipping_label_id)
-                    logger.info(f"✅ Successfully downloaded REAL PDF label after wait: {label_id}.pdf")
-                    return label_id
-            except Exception as final_retry_error:
-                logger.warning(f"Final retry also failed: {final_retry_error}")
-            
-            # Method 2: Try using shipment endpoint if we have shipment_id
-            # (This will be tried in the shipment_id section below)
-            
-            # Method 3: If all else fails, get REAL shipping info from API and generate production PDF
-            # This ensures we always have a PDF with real data from Bol.com API
-            logger.warning(f"⚠️ Could not download PDF directly from API. Getting REAL shipping info and generating production PDF...")
-            try:
-                # Get REAL track & trace and transporter info from API
-                track_and_trace = None
-                transporter_code = None
-                try:
-                    logger.info(f"🔍 Fetching REAL shipping label information from Bol.com API...")
-                    label_info = client.get_shipping_label_info(shipping_label_id)
-                    track_and_trace = label_info.get('track_and_trace', '')
-                    transporter_code = label_info.get('transporter_code', '')
-                    if track_and_trace or transporter_code:
-                        logger.info(f"✅ Retrieved REAL shipping info from API: Track={track_and_trace}, Transporter={transporter_code}")
+                content_type = label_response.get('content_type', '')
+                track_and_trace = label_response.get('track_and_trace', '')
+                transporter_code = label_response.get('transporter_code', '')
+                
+                logger.info(f"📥 Response - Content-Type: {content_type}, Data type: {type(pdf_data)}")
+                if track_and_trace:
+                    logger.info(f"   Track & Trace: {track_and_trace}")
+                if transporter_code:
+                    logger.info(f"   Transporter: {transporter_code}")
+                
+                # Check if we got PDF data
+                if pdf_data:
+                    # Handle binary PDF data
+                    if isinstance(pdf_data, bytes):
+                        pdf_bytes = pdf_data
+                    elif isinstance(pdf_data, str):
+                        # Might be base64 encoded
+                        try:
+                            pdf_bytes = base64.b64decode(pdf_data)
+                        except Exception as decode_error:
+                            logger.warning(f"⚠️ PDF data is string but not base64: {decode_error}")
+                            # Try to encode as UTF-8 (unlikely to work for PDF, but try)
+                            pdf_bytes = pdf_data.encode('utf-8')
                     else:
-                        logger.warning(f"⚠️ Shipping info retrieved but empty")
-                except Exception as info_error:
-                    logger.warning(f"⚠️ Could not retrieve shipping info from API: {info_error}")
+                        logger.warning(f"⚠️ Unexpected PDF data type: {type(pdf_data)}")
+                        if attempt < max_retries - 1:
+                            continue
+                        else:
+                            break
+                    
+                    # Validate it's actually a PDF
+                    if len(pdf_bytes) >= 4 and pdf_bytes[:4] == b'%PDF':
+                        # This is a valid PDF - save it
+                        label_id = _save_pdf_label(pdf_bytes, shipping_label_id)
+                        logger.info(f"✅ Successfully downloaded and saved PDF label: {label_id}.pdf ({len(pdf_bytes)} bytes)")
+                        logger.info(f"   Track & Trace: {track_and_trace or 'N/A'}")
+                        logger.info(f"   Transporter: {transporter_code or 'N/A'}")
+                        return label_id
+                    else:
+                        logger.warning(f"⚠️ Downloaded data doesn't appear to be a PDF (attempt {attempt + 1}/{max_retries})")
+                        logger.warning(f"   First 20 bytes (hex): {pdf_bytes[:20].hex() if len(pdf_bytes) >= 20 else 'too short'}")
+                        logger.warning(f"   Data length: {len(pdf_bytes)} bytes")
+                        if attempt < max_retries - 1:
+                            continue
                 
-                # Generate production PDF with REAL info from API (not a mock - uses real data)
-                logger.info(f"📄 Generating PRODUCTION PDF label with REAL shipping information from Bol.com API...")
-                production_pdf = _generate_production_pdf_label(
-                    shipping_label_id, order_item_id, order_id,
-                    track_and_trace=track_and_trace if track_and_trace else None,
-                    transporter_code=transporter_code if transporter_code else None
-                )
-                label_id = _save_pdf_label(production_pdf, shipping_label_id)
-                logger.info(f"✅ Generated and saved PRODUCTION PDF label with real shipping info: {label_id}.pdf")
-                logger.info(f"   This PDF contains REAL data from Bol.com API (Track & Trace, Transporter)")
-                return label_id
-            except Exception as pdf_error:
-                logger.error(f"❌ Failed to generate production PDF: {pdf_error}")
-                import traceback
-                logger.error(traceback.format_exc())
-                # Return empty only if PDF generation completely fails
-                return ""
-        
-        # Try shipment endpoint as fallback
-        if shipment_id:
-            logger.info(f"Trying to download PDF via shipment ID: {shipment_id}")
-            try:
-                # Try to get PDF from shipment endpoint
-                label_response = client.get_shipment_shipping_label(shipment_id, label_format="PDF")
-                pdf_data = label_response.get('data', None)
+                logger.info(f"   No valid PDF data in response yet (attempt {attempt + 1}/{max_retries})")
                 
-                if pdf_data and isinstance(pdf_data, bytes) and pdf_data[:4] == b'%PDF':
-                    label_id = _save_pdf_label(pdf_data, f"shipment_{shipment_id}")
-                    logger.info(f"✅ Downloaded PDF from shipment: {label_id}.pdf")
-                    return label_id
             except Exception as e:
-                logger.info(f"Shipment PDF download failed: {e}")
-        
-        # Final fallback: If we have shipping_label_id but no PDF yet, generate with real API data
-        if shipping_label_id:
-            logger.warning(f"⚠️ Shipping label ID exists but PDF not generated yet. Getting REAL shipping info from API...")
-            try:
-                # Get REAL track & trace and transporter info from API
-                track_and_trace = None
-                transporter_code = None
-                try:
-                    label_info = client.get_shipping_label_info(shipping_label_id)
-                    track_and_trace = label_info.get('track_and_trace', '')
-                    transporter_code = label_info.get('transporter_code', '')
-                    if track_and_trace or transporter_code:
-                        logger.info(f"✅ Retrieved REAL shipping info: Track={track_and_trace}, Transporter={transporter_code}")
-                except Exception:
-                    pass
+                error_msg = str(e)
+                logger.warning(f"⚠️ Attempt {attempt + 1}/{max_retries} failed: {error_msg}")
                 
-                # Generate production PDF with REAL info from API
-                production_pdf = _generate_production_pdf_label(
-                    shipping_label_id, order_item_id, order_id,
-                    track_and_trace=track_and_trace if track_and_trace else None,
-                    transporter_code=transporter_code if transporter_code else None
-                )
-                label_id = _save_pdf_label(production_pdf, shipping_label_id)
-                logger.info(f"✅ Generated PRODUCTION PDF label with real shipping info: {label_id}.pdf")
-                return label_id
-            except Exception as e:
-                logger.error(f"❌ CRITICAL: Failed to generate PDF: {e}")
-                return ""
+                # Check for specific HTTP errors
+                if "404" in error_msg:
+                    logger.warning(f"   Label not found (404) - may need more time to be generated")
+                    if attempt < max_retries - 1:
+                        continue
+                elif "406" in error_msg:
+                    logger.warning(f"   Not Acceptable (406) - Accept header issue")
+                    if attempt < max_retries - 1:
+                        continue
+                elif "400" in error_msg:
+                    logger.warning(f"   Bad Request (400) - check shipping label ID")
+                    if attempt < max_retries - 1:
+                        continue
+                else:
+                    if attempt < max_retries - 1:
+                        continue
         
-        # If no shipping_label_id, log error and return empty
-        if not process_status_id and not shipment_id:
-            logger.error(f"❌ No processStatusId or shipmentId found in label response for order item {order_item_id}")
-            logger.error(f"Label response keys: {list(label_response.keys())}")
-            logger.error(f"Label response (first 2000 chars): {str(label_response)[:2000]}")
-            # Try to extract any useful information from the response
-            if 'errorMessage' in label_response:
-                logger.error(f"API Error message: {label_response.get('errorMessage')}")
-            if 'errors' in label_response:
-                logger.error(f"API Errors: {label_response.get('errors')}")
-        
-        logger.error(f"❌ Could not retrieve shipping label for order item {order_item_id} after all attempts")
+        # If we reach here, we failed to download the PDF
+        logger.error(f"❌ Could not download PDF label from Bol.com API after {max_retries} attempts")
+        logger.error(f"   Shipping Label ID: {shipping_label_id}")
+        logger.error(f"   Order Item ID: {order_item_id}")
+        logger.error(f"   Order ID: {order_id}")
+        logger.error(f"")
+        logger.error(f"   Please check:")
+        logger.error(f"      1. Shipping label was created successfully")
+        logger.error(f"      2. Process status completed successfully")
+        logger.error(f"      3. Label is available in Bol.com system")
+        logger.error(f"      4. API credentials have correct permissions")
+        logger.error(f"      5. Network connectivity to Bol.com API")
         return ""
         
     except Exception as e:
-        logger.error(f"❌ Exception while fetching ZPL label for order item {order_item_id}: {e}")
+        logger.error(f"❌ Exception while fetching shipping label for order item {order_item_id}: {e}")
         logger.error(f"Exception type: {type(e).__name__}")
         logger.error(f"Traceback: {traceback.format_exc()}")
         return ""
@@ -789,6 +816,9 @@ def _create_csv_for_category(
     ]
     
     rows = []
+    pdf_generation_count = 0
+    pdf_failure_count = 0
+    
     for order in orders:
         order_time_str = (
             order.order_placed_date_time.strftime("%Y-%m-%d %H:%M:%S")
@@ -796,55 +826,66 @@ def _create_csv_for_category(
             else ""
         )
         for item in order.order_items:
-            # Fetch tracking label if client is provided
+            # Fetch shipping label if client is provided
+            # According to bol.com API, we need to:
+            # 1. Get delivery options (to get shippingLabelOfferId)
+            # 2. Create shipping label
+            # 3. Wait for process status
+            # 4. Download PDF
             tracking_label = ""
             if client:
-                # Check if item is FBR (Fulfilled By Retailer) - only FBR items can get shipping labels
                 fulfilment_method = item.fulfilment_method or ""
                 is_fbr = fulfilment_method.upper() == "FBR"
                 
                 logger.info(f"📋 Processing order item {item.order_item_id} (EAN: {item.ean}, Quantity: {item.quantity}, Fulfilment: {fulfilment_method or 'Unknown'})")
                 
-                # If fulfilment method is explicitly not FBR, skip
+                # Check if item is explicitly not FBR
                 if fulfilment_method and not is_fbr:
-                    logger.warning(f"⚠️ Order item {item.order_item_id} is not FBR (fulfilment method: {fulfilment_method}). Shipping labels are only available for FBR items. Skipping label fetch.")
+                    logger.warning(f"⚠️ Order item {item.order_item_id} is not FBR (fulfilment method: {fulfilment_method})")
+                    logger.warning(f"   Shipping labels are only available for FBR items. Skipping label fetch.")
                     tracking_label = ""  # Leave empty for non-FBR items
                 else:
-                    # If FBR or unknown, check if we can get delivery options (this confirms FBR status)
+                    # For FBR items or unknown fulfilment, attempt to fetch shipping label
+                    # The _fetch_zpl_label function will handle:
+                    # - Getting delivery options (which confirms FBR status)
+                    # - Creating the shipping label
+                    # - Downloading the PDF
                     if is_fbr:
                         logger.info(f"✅ Order item {item.order_item_id} is FBR - proceeding to fetch shipping label")
                     else:
-                        logger.info(f"⚠️ Fulfilment method unknown for order item {item.order_item_id} - checking if FBR by attempting to get delivery options")
-                        # Quick check: try to get delivery options to see if item is FBR
-                        try:
-                            delivery_options = client.get_delivery_options(item.order_item_id, quantity=item.quantity)
-                            if delivery_options and delivery_options.get('deliveryOptions'):
-                                logger.info(f"✅ Order item {item.order_item_id} appears to be FBR (delivery options available)")
-                            else:
-                                logger.warning(f"⚠️ No delivery options for order item {item.order_item_id} - likely not FBR, skipping label fetch")
-                                tracking_label = ""
-                                continue
-                        except Exception as check_error:
-                            error_str = str(check_error)
-                            if "404" in error_str or "Not Found" in error_str or "can not be fulfilled" in error_str.lower():
-                                logger.warning(f"⚠️ Order item {item.order_item_id} is not FBR (API returned 404 for delivery options). Skipping label fetch.")
-                                tracking_label = ""
-                                continue
-                            else:
-                                logger.warning(f"⚠️ Error checking delivery options for {item.order_item_id}: {check_error}. Will attempt label fetch anyway.")
+                        logger.info(f"⚠️ Fulfilment method unknown for order item {item.order_item_id}")
+                        logger.info(f"   Will attempt to fetch shipping label (will fail if not FBR)")
                     
-                    # Proceed to fetch label and download PDF (PRODUCTION MODE - must generate PDF)
-                    tracking_label = _fetch_zpl_label(client, item.order_item_id, order.order_id, quantity=item.quantity)
-                    if not tracking_label:
-                        logger.error(f"❌ Failed to fetch label for order item {item.order_item_id} - Shipping Label column will be empty")
-                    else:
-                        # Verify PDF was actually created
-                        pdf_path = os.path.join(LABEL_DIR, f"{tracking_label}.pdf")
-                        if os.path.exists(pdf_path):
-                            logger.info(f"✅ Successfully fetched label for order item {item.order_item_id}: {tracking_label} (PDF verified)")
+                    try:
+                        tracking_label = _fetch_zpl_label(
+                            client, 
+                            item.order_item_id, 
+                            order.order_id, 
+                            quantity=item.quantity, 
+                            customer_details=order.customer_details
+                        )
+                        
+                        if tracking_label:
+                            # Verify PDF was actually created
+                            pdf_path = os.path.join(LABEL_DIR, f"{tracking_label}.pdf")
+                            if os.path.exists(pdf_path):
+                                logger.info(f"✅ Successfully fetched and verified label for order item {item.order_item_id}: {tracking_label}")
+                                pdf_generation_count += 1
+                            else:
+                                logger.warning(f"⚠️ Label ID returned ({tracking_label}) but PDF not found at {pdf_path}")
+                                logger.warning(f"   This should not happen - PDF should always be generated")
+                                pdf_failure_count += 1
                         else:
-                            logger.warning(f"⚠️ Label ID returned ({tracking_label}) but PDF not found at {pdf_path}")
-                            logger.warning(f"   This should not happen - PDF should always be generated in production mode")
+                            logger.warning(f"⚠️ No shipping label returned for order item {item.order_item_id}")
+                            logger.warning(f"   Shipping Label column will be empty in CSV")
+                            pdf_failure_count += 1
+                            
+                    except Exception as label_fetch_error:
+                        logger.error(f"❌ Exception while fetching label for order item {item.order_item_id}: {label_fetch_error}")
+                        import traceback
+                        logger.error(traceback.format_exc())
+                        tracking_label = ""  # Set to empty on error
+                        pdf_failure_count += 1
             
             # Batch Number column should contain full filename without extension (e.g., "S-001", "SL-001", "M-001")
             batch_number_full = f"{filename_prefix}-{batch_number}" if filename_prefix else batch_number
@@ -869,6 +910,16 @@ def _create_csv_for_category(
                 category,
                 order_item_id=item.order_item_id
             )
+    
+    # Log PDF generation summary
+    total_items = sum(len(order.order_items) for order in orders)
+    logger.info("")
+    logger.info("="*80)
+    logger.info(f"PDF Generation Summary for {category} batch {batch_number}:")
+    logger.info(f"  Total order items processed: {total_items}")
+    logger.info(f"  PDFs successfully generated: {pdf_generation_count}")
+    logger.info(f"  PDFs failed/missing: {pdf_failure_count}")
+    logger.info("="*80)
     
     # Write CSV file
     with open(output_path, 'w', newline='', encoding='utf-8') as csvfile:
@@ -1241,8 +1292,42 @@ def run_processing_once() -> None:
 
     # PRODUCTION MODE: Always use test_mode=False for live labels
     client = BolAPIClient(BOL_CLIENT_ID, BOL_CLIENT_SECRET, test_mode=False)
-    raw_orders = client.get_all_open_orders()
-    all_orders = [Order.from_dict(o) for o in raw_orders]
+    
+    # Fetch orders - get list first, then fetch individual orders for complete details
+    logger.info("📋 Fetching list of open orders...")
+    raw_orders_list = client.get_all_open_orders()
+    
+    if not raw_orders_list:
+        logger.info("No open orders to process.")
+        return
+    
+    logger.info(f"📋 Found {len(raw_orders_list)} open order(s), fetching individual order details...")
+    
+    # Fetch individual orders to get complete order item information
+    # According to bol.com API, get_order() returns full order details with all order items
+    all_orders = []
+    for order_summary in raw_orders_list:
+        order_id = order_summary.get('orderId')
+        if not order_id:
+            logger.warning(f"⚠️ Order summary missing orderId, skipping: {order_summary}")
+            continue
+        
+        try:
+            # Fetch individual order for complete details
+            full_order_data = client.get_order(order_id)
+            order = Order.from_dict(full_order_data)
+            all_orders.append(order)
+            logger.debug(f"✅ Fetched full details for order {order_id} ({len(order.order_items)} item(s))")
+        except Exception as fetch_error:
+            logger.error(f"❌ Failed to fetch order {order_id}: {fetch_error}")
+            # Fallback: try to use summary data if available
+            try:
+                order = Order.from_dict(order_summary)
+                all_orders.append(order)
+                logger.warning(f"⚠️ Using summary data for order {order_id} (some details may be missing)")
+            except Exception as fallback_error:
+                logger.error(f"❌ Failed to parse order summary for {order_id}: {fallback_error}")
+                continue
 
     if not all_orders:
         logger.info("No open orders to process.")
@@ -1268,15 +1353,23 @@ def run_processing_once() -> None:
         # Upload CSV files to SFTP
         upload_files_sftp(files_created)
         
-        # Upload label PDFs to SFTP
-        if LABEL_UPLOADER_AVAILABLE:
+        # Upload label PDFs to SFTP (only PDFs referenced in the generated CSV files)
+        if LABEL_UPLOADER_AVAILABLE and upload_labels_for_csv_files:
             try:
-                logger.info("📤 Uploading label PDFs to SFTP...")
-                upload_all_labels()
+                logger.info("📤 Uploading label PDFs to SFTP (from generated CSV files)...")
+                upload_labels_for_csv_files(files_created)
                 logger.info("✅ Label PDF upload completed")
             except Exception as label_error:
                 logger.error(f"❌ Failed to upload label PDFs: {label_error}")
+                import traceback
+                logger.error(traceback.format_exc())
                 logger.error("   Labels are saved locally in 'label/' folder")
+                # Try fallback: upload all labels
+                try:
+                    logger.info("🔄 Tentando upload de todos os labels como fallback...")
+                    upload_all_labels()
+                except Exception as fallback_error:
+                    logger.error(f"❌ Fallback upload também falhou: {fallback_error}")
         else:
             logger.warning("⚠️  Label uploader not available - PDFs remain in local 'label/' folder")
     else:

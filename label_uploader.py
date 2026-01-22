@@ -127,6 +127,8 @@ def upload_label_pdf_to_ftp(local_file_path: str) -> bool:
         # Upload the file
         local_size = os.path.getsize(local_file_path)
         logger.info(f"📤 Enviando {filename} ({local_size} bytes) para {remote_path}")
+        logger.info(f"   Servidor: {sftp_host}:{sftp_port}")
+        logger.info(f"   Diretório remoto: {sftp_remote_label_dir}")
         sftp.put(local_file_path, remote_path)
         
         # Verify upload
@@ -307,6 +309,80 @@ def upload_all_labels():
     
     if fail_count > 0:
         logger.warning("⚠️  Alguns arquivos falharam no upload. Verifique os logs acima.")
+
+
+def upload_labels_for_csv_files(csv_file_paths: list) -> None:
+    """
+    Upload PDF label files that are referenced in the generated CSV files.
+    
+    This function reads the CSV files to find shipping label IDs, then uploads
+    the corresponding PDF files from the label folder.
+    
+    Args:
+        csv_file_paths: List of paths to CSV files that contain shipping label references
+    """
+    import csv
+    
+    if not csv_file_paths:
+        logger.info("ℹ️  Nenhum arquivo CSV fornecido - pulando upload de labels")
+        return
+    
+    # Collect all shipping label IDs from CSV files
+    label_ids = set()
+    
+    for csv_path in csv_file_paths:
+        if not os.path.exists(csv_path):
+            logger.warning(f"⚠️  Arquivo CSV não encontrado: {csv_path}")
+            continue
+        
+        try:
+            with open(csv_path, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    shipping_label = row.get('Shipping Label', '').strip()
+                    if shipping_label:
+                        label_ids.add(shipping_label)
+        except Exception as e:
+            logger.error(f"❌ Erro ao ler CSV {csv_path}: {e}")
+            continue
+    
+    if not label_ids:
+        logger.info("ℹ️  Nenhum shipping label encontrado nos arquivos CSV")
+        return
+    
+    logger.info(f"📋 Encontrados {len(label_ids)} shipping label(s) único(s) nos CSVs")
+    logger.info("📤 Iniciando upload de labels PDF correspondentes...")
+    
+    success_count = 0
+    fail_count = 0
+    not_found_count = 0
+    
+    for label_id in label_ids:
+        # PDF filename is label_id.pdf
+        pdf_filename = f"{label_id}.pdf"
+        local_path = os.path.join(LOCAL_LABEL_DIR, pdf_filename)
+        
+        if not os.path.exists(local_path):
+            logger.warning(f"⚠️  PDF não encontrado: {pdf_filename} (referenciado no CSV mas não existe localmente)")
+            logger.warning(f"   Caminho esperado: {local_path}")
+            not_found_count += 1
+            continue
+        
+        logger.info(f"📤 Enviando {pdf_filename} para FTP...")
+        if upload_label_pdf_to_ftp(local_path):
+            success_count += 1
+            logger.info(f"✅ {pdf_filename} enviado com sucesso")
+        else:
+            fail_count += 1
+            logger.error(f"❌ Falha ao enviar {pdf_filename}")
+    
+    logger.info("")
+    logger.info("="*80)
+    logger.info(f"📊 Upload de labels concluído:")
+    logger.info(f"   ✅ Sucesso: {success_count}")
+    logger.info(f"   ❌ Falhas: {fail_count}")
+    logger.info(f"   ⚠️  Não encontrados: {not_found_count}")
+    logger.info("="*80)
 
 
 if __name__ == "__main__":
