@@ -30,16 +30,48 @@ class OrderItem:
         if not fulfilment_method:
             fulfilment_method = data.get('fulfilment', {}).get('method')
         
+        # Extract EAN - try multiple possible locations
+        # According to bol.com API, EAN might be in different locations
+        ean = None
+        
+        # Try direct field first
+        ean = data.get('ean') or data.get('EAN') or data.get('Ean')
+        
+        # Try nested in product object
+        if not ean:
+            product = data.get('product', {})
+            if isinstance(product, dict):
+                ean = product.get('ean') or product.get('EAN') or product.get('Ean')
+                # Also check if there's a nested identifier
+                if not ean and 'identifiers' in product:
+                    identifiers = product.get('identifiers', {})
+                    if isinstance(identifiers, dict):
+                        ean = identifiers.get('ean') or identifiers.get('EAN')
+        
+        # Try alternative field names (MP EAN, etc.)
+        if not ean:
+            ean = data.get('mpEan') or data.get('mpEAN') or data.get('mp_ean') or data.get('MP_EAN')
+        
+        # Try in offer if available
+        if not ean:
+            offer = data.get('offer', {})
+            if isinstance(offer, dict):
+                ean = offer.get('ean') or offer.get('EAN')
+        
+        # Convert to string if it's a number
+        if ean is not None:
+            ean = str(ean).strip() if ean else None
+        
         return cls(
             order_item_id=data.get('orderItemId', ''),
-            ean=data.get('ean'),
+            ean=ean,
             quantity=data.get('quantity', 1),
             quantity_shipped=data.get('quantityShipped', 0),
             quantity_cancelled=data.get('quantityCancelled', 0),
             unit_price=data.get('unitPrice'),
             fulfilment_method=fulfilment_method,
             offer_reference=data.get('offerReference'),
-            product_title=data.get('product', {}).get('title')
+            product_title=data.get('product', {}).get('title') if isinstance(data.get('product'), dict) else None
         )
 
 

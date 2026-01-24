@@ -538,33 +538,34 @@ class BolAPIClient:
         # For binary content (PDF/ZPL), we use the MIME type directly
         token = self._get_access_token()
         
-        # According to Bol.com API v10 documentation, for shipping labels:
-        # - PDF format: Accept: application/pdf
-        # - ZPL format: Accept: text/plain
-        # The API does not accept wildcards or multiple types in Accept header for binary content
+        # According to Bol.com API v10 pattern: application/vnd.retailer.v10+{subtype}
+        # For binary downloads, the subtype indicates the format:
+        # - PDF: application/vnd.retailer.v10+pdf
+        # - ZPL: application/vnd.retailer.v10+zpl (or text/plain)
+        # Do NOT use format parameter in URL - it's specified via Accept header only
         if label_format == "ZPL":
-            accept_header = 'text/plain'
+            # For ZPL: use versioned ZPL format
+            accept_header = 'application/vnd.retailer.v10+zpl'
         elif label_format == "PDF":
-            accept_header = 'application/pdf'
+            # CRITICAL: For PDF, use versioned PDF format (not +json or plain application/pdf)
+            accept_header = 'application/vnd.retailer.v10+pdf'
         else:
-            # Default to ZPL if format not specified
-            accept_header = 'text/plain'
+            # Default to PDF format
+            accept_header = 'application/vnd.retailer.v10+pdf'
         
         headers = {
             'Authorization': f'{self.token_type} {token}',
             'Accept': accept_header
         }
         
-        # Note: According to Bol.com API, the format is specified via Accept header, not query parameter
-        # Some endpoints may accept format parameter, but shipping labels use Accept header
+        # Note: According to Bol.com API v10, format is specified via Accept header only
+        # Do NOT include format as URL parameter - it causes errors
         params = {}
-        # Try with format parameter as fallback (some API versions may require it)
-        if label_format:
-            params['format'] = label_format
         
         logger.info(f"📥 Fetching REAL shipping label from PRODUCTION API (format: {label_format}) for shipping label ID {shipping_label_id}...")
-        logger.info(f"   API Endpoint: {self.API_BASE_URL}{endpoint} (LIVE)")
-        logger.info(f"   Mode: {'TEST' if self.test_mode else 'PRODUCTION (LIVE)'}")
+        logger.info(f"   API Endpoint: {url}")
+        logger.info(f"   Accept header: {accept_header}")
+        logger.info(f"   URL parameters: {params if params else '{}  (empty - no format parameter)'}")
         
         try:
             response = self.session.get(url, headers=headers, params=params)
@@ -634,13 +635,13 @@ class BolAPIClient:
                 self.access_token = None  # Force token refresh
                 token = self._get_access_token()
                 
-                # Recreate headers with same accept header
+                # Recreate headers with same accept header (versioned binary format)
                 if label_format == "ZPL":
-                    accept_header = 'text/plain'
+                    accept_header = 'application/vnd.retailer.v10+zpl'
                 elif label_format == "PDF":
-                    accept_header = 'application/pdf'
+                    accept_header = 'application/vnd.retailer.v10+pdf'
                 else:
-                    accept_header = 'text/plain'
+                    accept_header = 'application/vnd.retailer.v10+pdf'
                 
                 headers = {
                     'Authorization': f'{self.token_type} {token}',

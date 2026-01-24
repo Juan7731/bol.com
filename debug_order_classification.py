@@ -15,8 +15,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def debug_order_classification():
-    """Debug order classification issues"""
+def debug_order_classification(account_name: str = None):
+    """Debug order classification issues
+    
+    Args:
+        account_name: Specific account name to debug (e.g., 'Trivium'). If None, uses Trivium or first account.
+    """
     logger.info("="*80)
     logger.info("🔍 DEBUGGING ORDER CLASSIFICATION")
     logger.info("="*80)
@@ -28,8 +32,30 @@ def debug_order_classification():
         logger.error("❌ No active accounts found")
         return
     
-    # Use first active account
-    account = active_accounts[0]
+    # Find the account to use
+    account = None
+    if account_name:
+        # Look for specific account
+        for acc in active_accounts:
+            if acc['name'].lower() == account_name.lower():
+                account = acc
+                break
+        if not account:
+            logger.error(f"❌ Account '{account_name}' not found in active accounts")
+            logger.info(f"Available accounts: {[acc['name'] for acc in active_accounts]}")
+            return
+    else:
+        # Try to find Trivium account first, otherwise use first account
+        for acc in active_accounts:
+            if acc['name'].lower() == 'trivium':
+                account = acc
+                break
+        
+        if not account:
+            # Use first active account if Trivium not found
+            account = active_accounts[0]
+            logger.warning(f"⚠️ Trivium account not found, using: {account['name']}")
+    
     logger.info(f"📋 Using account: {account['name']}")
     logger.info("")
     
@@ -44,6 +70,7 @@ def debug_order_classification():
     
     if not raw_orders_list:
         logger.warning("⚠️ No open orders found")
+        logger.warning(f"   This means the {account['name']} account has no open orders to process")
         return
     
     # Fetch individual orders
@@ -81,6 +108,27 @@ def debug_order_classification():
                     logger.info(f"    - Quantity: {item.quantity}")
                     logger.info(f"    - Fulfilment: {item.fulfilment_method}")
                     logger.info(f"    - Product: {item.product_title}")
+                
+                # Show raw order item structure if EAN is missing
+                if not any(item.ean for item in order.order_items):
+                    logger.warning("")
+                    logger.warning("⚠️ No EANs found in order items! Showing raw API structure:")
+                    if 'orderItems' in full_order_data and full_order_data['orderItems']:
+                        first_item = full_order_data['orderItems'][0]
+                        logger.info("Raw order item structure:")
+                        logger.info(json.dumps(first_item, indent=2, default=str))
+                        logger.warning("")
+                        logger.warning("Checking for EAN in various locations:")
+                        logger.warning(f"  - data.get('ean'): {first_item.get('ean')}")
+                        logger.warning(f"  - data.get('EAN'): {first_item.get('EAN')}")
+                        logger.warning(f"  - data.get('mpEan'): {first_item.get('mpEan')}")
+                        logger.warning(f"  - data.get('mpEAN'): {first_item.get('mpEAN')}")
+                        if 'product' in first_item:
+                            product = first_item['product']
+                            if isinstance(product, dict):
+                                logger.warning(f"  - product.get('ean'): {product.get('ean')}")
+                                logger.warning(f"  - product.get('EAN'): {product.get('EAN')}")
+                                logger.warning(f"  - product keys: {list(product.keys())}")
                 
                 # Check classification
                 logger.info("")
@@ -130,4 +178,7 @@ def debug_order_classification():
 
 
 if __name__ == "__main__":
-    debug_order_classification()
+    import sys
+    # Allow specifying account name as command line argument
+    account_name = sys.argv[1] if len(sys.argv) > 1 else None
+    debug_order_classification(account_name)
